@@ -161,6 +161,312 @@
       "stale host recovery after failed handshake"
     );
 
+
+    source = mustReplace(
+      source,
+      "  const p2pPhaseEl = document.getElementById('p2p-phase');",
+      `  const p2pPhaseEl = document.getElementById('p2p-phase');
+
+  // P2P diagnostics
+  const p2pDebugEntries = [];
+  const P2P_DEBUG_MAX = 300;
+
+  function shortId(value) {
+    if (!value) return '—';
+    const s = String(value);
+    return s.length > 12 ? s.slice(0, 12) + '…' : s;
+  }
+
+  function p2pDebug(message, details = null) {
+    const ts = new Date().toLocaleTimeString();
+    let line = '[' + ts + '] ' + message;
+    if (details !== null && details !== undefined) {
+      try {
+        line += ' ' + (typeof details === 'string' ? details : JSON.stringify(details));
+      } catch {
+        line += ' ' + String(details);
+      }
+    }
+    p2pDebugEntries.push(line);
+    if (p2pDebugEntries.length > P2P_DEBUG_MAX) p2pDebugEntries.shift();
+    renderP2PDebug();
+    console.log('[P2P]', message, details ?? '');
+  }
+
+  function currentP2PSummary() {
+    return {
+      role: isHostClient ? 'host' : 'guest',
+      clientId: shortId(clientId),
+      hostClientId: shortId(hostClientId),
+      phase: p2pPhase,
+      connected: !!p2pConnected,
+      signaling: signalChannel ? 'subscribed/active' : 'none',
+      peerConnection: isHostClient
+        ? ('host peers: ' + peerConnections.size)
+        : (hostPeer?.connectionState || 'none'),
+      iceConnection: isHostClient
+        ? [...peerConnections.values()].map(pc => pc.iceConnectionState).join(', ') || '—'
+        : (hostPeer?.iceConnectionState || 'none'),
+      iceGathering: isHostClient
+        ? [...peerConnections.values()].map(pc => pc.iceGatheringState).join(', ') || '—'
+        : (hostPeer?.iceGatheringState || 'none'),
+      dataChannel: isHostClient
+        ? ([...dataChannels.values()].map(ch => ch.readyState).join(', ') || '—')
+        : (hostDataChannel?.readyState || 'none')
+    };
+  }
+
+  function renderP2PDebug() {
+    const summary = document.getElementById('p2p-debug-summary');
+    const logEl = document.getElementById('p2p-debug-log');
+    if (!summary || !logEl) return;
+
+    const s = currentP2PSummary();
+    summary.innerHTML = [
+      ['Role', s.role],
+      ['Client', s.clientId],
+      ['Host', s.hostClientId],
+      ['Phase', s.phase],
+      ['Connected', String(s.connected)],
+      ['Signaling', s.signaling],
+      ['PeerConnection', s.peerConnection],
+      ['ICE connection', s.iceConnection],
+      ['ICE gathering', s.iceGathering],
+      ['DataChannel', s.dataChannel]
+    ].map(([k,v]) => '<div class="k">'+k+'</div><div>'+String(v)+'</div>').join('');
+
+    logEl.textContent = p2pDebugEntries.join('\\n');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function fullP2PDebugText() {
+    const s = currentP2PSummary();
+    return [
+      'SET P2P diagnostics',
+      'Role: ' + s.role,
+      'Client: ' + s.clientId,
+      'Host: ' + s.hostClientId,
+      'Phase: ' + s.phase,
+      'Connected: ' + s.connected,
+      'Signaling: ' + s.signaling,
+      'PeerConnection: ' + s.peerConnection,
+      'ICE connection: ' + s.iceConnection,
+      'ICE gathering: ' + s.iceGathering,
+      'DataChannel: ' + s.dataChannel,
+      '',
+      ...p2pDebugEntries
+    ].join('\\n');
+  }`,
+      "diagnostic state"
+    );
+
+    source = mustReplace(
+      source,
+      "  function setP2PPhase(phase) {\n    p2pPhase = phase;",
+      `  function setP2PPhase(phase) {
+    p2pPhase = phase;
+    p2pDebug('phase -> ' + phase);`,
+      "phase logging"
+    );
+
+    source = mustReplace(
+      source,
+      "  async function insertSignal(toClient, kind, payload) {",
+      `  async function insertSignal(toClient, kind, payload) {
+    p2pDebug('signal send ' + kind, {to: shortId(toClient)});`,
+      "signal send logging"
+    );
+
+    source = mustReplace(
+      source,
+      "  async function handleSignalRow(row) {\n    if (!row || row.room_name !== roomName || row.from_client === clientId) return;",
+      `  async function handleSignalRow(row) {
+    if (!row || row.room_name !== roomName || row.from_client === clientId) return;
+    p2pDebug('signal received ' + row.kind, {
+      from: shortId(row.from_client),
+      to: shortId(row.to_client)
+    });`,
+      "signal receive logging"
+    );
+
+    source = mustReplace(
+      source,
+      "    channel.onopen = () => {\n      p2pConnected = true;",
+      `    channel.onopen = () => {
+      p2pDebug('guest DataChannel open');
+      p2pConnected = true;`,
+      "guest datachannel open"
+    );
+
+    source = mustReplace(
+      source,
+      "    channel.onclose = () => {\n      p2pConnected = false;",
+      `    channel.onclose = () => {
+      p2pDebug('guest DataChannel closed');
+      p2pConnected = false;`,
+      "guest datachannel close"
+    );
+
+    source = mustReplace(
+      source,
+      "    pc.ondatachannel = event => setupHostDataChannel(peerId, event.channel);",
+      `    pc.ondatachannel = event => {
+      p2pDebug('host DataChannel received', {peer: shortId(peerId)});
+      setupHostDataChannel(peerId, event.channel);
+    };`,
+      "host datachannel"
+    );
+
+    source = mustReplace(
+      source,
+      "    pc.oniceconnectionstatechange = () => {\n      if (['checking','new'].includes(pc.iceConnectionState)) setP2PPhase('ice');",
+      `    pc.oniceconnectionstatechange = () => {
+      p2pDebug('host ICE state', {peer: shortId(peerId), state: pc.iceConnectionState});
+      if (['checking','new'].includes(pc.iceConnectionState)) setP2PPhase('ice');`,
+      "host ice logging"
+    );
+
+    source = mustReplace(
+      source,
+      "    hostPeer.oniceconnectionstatechange = () => {\n      const state = hostPeer?.iceConnectionState;",
+      `    hostPeer.oniceconnectionstatechange = () => {
+      const state = hostPeer?.iceConnectionState;
+      p2pDebug('guest ICE state', {state});`,
+      "guest ice logging"
+    );
+
+    source = mustReplace(
+      source,
+      "    hostPeer.onconnectionstatechange = () => {\n      const state = hostPeer?.connectionState;",
+      `    hostPeer.onconnectionstatechange = () => {
+      const state = hostPeer?.connectionState;
+      p2pDebug('guest PeerConnection state', {state});`,
+      "guest pc logging"
+    );
+
+    source = mustReplace(
+      source,
+      "    await insertSignal(hostClientId, 'offer', hostPeer.localDescription.toJSON());\n    setP2PPhase('offer');",
+      `    await insertSignal(hostClientId, 'offer', hostPeer.localDescription.toJSON());
+    p2pDebug('offer sent', {host: shortId(hostClientId)});
+    setP2PPhase('offer');`,
+      "offer log"
+    );
+
+    source = mustReplace(
+      source,
+      "    await insertSignal(peerId, 'answer', pc.localDescription.toJSON());",
+      `    await insertSignal(peerId, 'answer', pc.localDescription.toJSON());
+    p2pDebug('answer sent', {peer: shortId(peerId)});`,
+      "answer log"
+    );
+
+    source = mustReplace(
+      source,
+      "          await hostPeer.setRemoteDescription(row.payload);\n          await flushPendingIce(hostClientId, hostPeer);",
+      `          await hostPeer.setRemoteDescription(row.payload);
+          p2pDebug('answer applied', {host: shortId(hostClientId)});
+          await flushPendingIce(hostClientId, hostPeer);`,
+      "answer applied"
+    );
+
+    source = mustReplace(
+      source,
+      "    await waitForChannelSubscribed(channel);\n    await replayRecentSignals();",
+      `    await waitForChannelSubscribed(channel);
+    p2pDebug('Supabase signaling subscribed');
+    await replayRecentSignals();`,
+      "signaling subscribed"
+    );
+
+    source = mustReplace(
+      source,
+      "        setP2PPhase('retry');\n        try {",
+      `        setP2PPhase('retry');
+        p2pDebug('handshake timeout: DataChannel not open after 12s');
+        try {`,
+      "timeout logging"
+    );
+
+    source = mustReplace(
+      source,
+      "  applyLanguage();\n  renderHelpContent();",
+      `  // Diagnostic dialog. Click the P2P phase text to open it.
+  const debugOverlay = document.createElement('div');
+  debugOverlay.id = 'p2p-debug-overlay';
+  debugOverlay.setAttribute('aria-hidden', 'true');
+  debugOverlay.innerHTML = \`
+    <div id="p2p-debug-dialog" role="dialog" aria-modal="true" aria-labelledby="p2p-debug-title">
+      <div id="p2p-debug-header">
+        <strong id="p2p-debug-title">P2P diagnostics</strong>
+        <button id="p2p-debug-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="p2p-debug-summary"></div>
+      <pre id="p2p-debug-log"></pre>
+      <div id="p2p-debug-actions">
+        <button id="p2p-debug-copy" type="button">Copy debug log</button>
+        <button id="p2p-debug-clear" type="button">Clear log</button>
+      </div>
+    </div>\`;
+  document.body.appendChild(debugOverlay);
+
+  p2pPhaseEl.style.cursor = 'pointer';
+  p2pPhaseEl.title = 'Open P2P diagnostics';
+  p2pPhaseEl.addEventListener('click', () => {
+    renderP2PDebug();
+    debugOverlay.classList.add('open');
+    debugOverlay.setAttribute('aria-hidden', 'false');
+  });
+
+  document.getElementById('p2p-debug-close').addEventListener('click', () => {
+    debugOverlay.classList.remove('open');
+    debugOverlay.setAttribute('aria-hidden', 'true');
+  });
+
+  debugOverlay.addEventListener('click', event => {
+    if (event.target === debugOverlay) {
+      debugOverlay.classList.remove('open');
+      debugOverlay.setAttribute('aria-hidden', 'true');
+    }
+  });
+
+  document.getElementById('p2p-debug-copy').addEventListener('click', async () => {
+    const text = fullP2PDebugText();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      window.prompt('Copy debug log', text);
+    }
+  });
+
+  document.getElementById('p2p-debug-clear').addEventListener('click', () => {
+    p2pDebugEntries.length = 0;
+    p2pDebug('debug log cleared');
+  });
+
+  const diagStyle = document.createElement('style');
+  diagStyle.textContent = \`
+    #p2p-debug-overlay { position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:16px; }
+    #p2p-debug-overlay.open { display:flex; }
+    #p2p-debug-dialog { width:min(760px,100%); max-height:88vh; background:#fff; color:#111827; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.35); display:flex; flex-direction:column; overflow:hidden; font:14px/1.4 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    #p2p-debug-header { display:flex; align-items:center; gap:10px; justify-content:space-between; padding:12px 14px; border-bottom:1px solid #d1d5db; }
+    #p2p-debug-header strong { font-size:16px; }
+    #p2p-debug-close { width:36px; height:36px; min-height:36px; padding:0; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-size:22px; }
+    #p2p-debug-summary { padding:12px 14px; border-bottom:1px solid #e5e7eb; display:grid; grid-template-columns:150px 1fr; gap:5px 10px; }
+    #p2p-debug-summary .k { color:#6b7280; }
+    #p2p-debug-log { margin:0; padding:12px 14px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#111827; color:#f9fafb; min-height:220px; flex:1; }
+    #p2p-debug-actions { display:flex; gap:8px; padding:10px 14px; border-top:1px solid #d1d5db; flex-wrap:wrap; }
+    #p2p-debug-actions button { min-height:40px; border:1px solid #d1d5db; border-radius:8px; background:#fff; padding:8px 12px; }
+  \`;
+  document.head.appendChild(diagStyle);
+
+  p2pDebug('diagnostics initialized');
+
+  applyLanguage();
+  renderHelpContent();`,
+      "diagnostic UI bootstrap"
+    );
+
     document.open();
     document.write(source);
     document.close();
