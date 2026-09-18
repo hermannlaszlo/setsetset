@@ -1245,6 +1245,9 @@
   let p2pStarted = false;
   let p2pConnected = false;
   let hostSetClaim = null; // authoritative multiplayer SET claim, owned by host
+  let setClaimPending = false;
+  let setClaimRequestId = 0;
+  const pendingSetCardIds = [];
   let p2pPhase = 'idle';
   let signalingReleaseTimer = null;
   let guestReconnectTimer = null;
@@ -1496,7 +1499,7 @@
     multiplayerOnlyEls.forEach(el => el.classList.toggle('hidden', solo));
   }
 
-  const helpHtml = {"hu": "<h3>Alapszabály</h3>\n<ul>\n<li>Egy SET három kártyából áll.</li>\n<li>A négy tulajdonság: darabszám, forma, szín és kitöltés.</li>\n<li>Mind a négy tulajdonságnál a három kártya értéke vagy mind azonos, vagy mind különböző.</li>\n</ul>\n\n<h3>Egyéni játék</h3>\n<ul>\n<li>Az egyéni játék teljesen a böngészőben fut, Supabase nélkül.</li>\n<li>A SET! gomb megnyomása után 10 másodperc van három kártya kijelölésére.</li>\n<li>Helyes SET: +1 pont.</li>\n<li>Hibás SET vagy lejárt 10 másodperc: −1 pont, ha van levonható pont. Nulla pontnál nincs további büntetés.</li>\n<li>Az Új kártya gomb bármikor használható, ha van még lap a pakliban.</li>\n<li>A játék akkor ér véget, ha elfogyott a pakli és a kint lévő lapok között nincs több SET.</li>\n</ul>\n\n<h3>Csoportos játék</h3>\n<ul>\n<li>Minden játékos ugyanazt az asztalt látja, valós időben szinkronizálva.</li>\n<li>Új táblaállapot után 30 másodperc közös gondolkodási idő indul.</li>\n<li>Ezután új kártya csak akkor tehető ki, ha senki sem kér további gondolkodási időt.</li>\n<li>A ✋ +30 mp gombbal 30 másodperc további idő kérhető; a kéz automatikusan lejár, vagy korábban levehető.</li>\n<li>A SET! bemondását a host hitelesíti: egyszerre csak egy játékos kap SET-jogot. A jog kiosztása és minden kártyakijelölés a P2P DataChannelen a hoston keresztül történik. Ezután 3 másodpercen belül el kell kezdeni a kijelölést, és 10 másodpercen belül be kell fejezni. A többiek valós időben látják, ki mondta a SET-et, mely lapokat jelöli és mennyi ideje maradt.</li>\n<li>Hibás SET vagy lejárt idő: −1 pont. Ha nincs levonható pont, a játékos a következő körből kimarad. Helyes SET után a három megtalált lap azonnal lekerül, de a helyük üresen marad: a többi lap nem rendeződik át és új lap még nem kerül ki. Ugyanaz a játékos 3 másodperc elsőbbséget kap a következő SET elkezdésére a megmaradt lapok között; ha ezalatt kijelöli az első lapot, 10 másodperce van befejezni. Helyes találattal a sorozat folytatható. Amikor a privilégium lejár, vagy a következő próbálkozás hibás/időtúllépéses, az összes üres helyet egyszerre, automatikusan töltjük fel a pakliból, majd új 30 másodperces közös gondolkodási idő indul. Az Új kártya gomb ezután valódi plusz lapot tesz ki; SET után maradt lyukat soha nem egyenként tölt.</li>\n<li>A kimaradó játékos a következő körben nem mondhat SET-et, nem kérhet gondolkodási időt és nem rakhat ki új lapot.</li>\n<li>Megfigyelő láthatja az asztalt és az eredményeket, de nem játszik aktívan.</li>\n</ul>\n\n<h3>Asztalok és meghívás</h3>\n<ul>\n<li>Az asztal URL-je Jitsi-szerű: <code>/asztal-neve</code>.</li>\n<li>Példa: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Ha az asztal létezik, a link megnyitásakor csatlakozol hozzá. Ha nem létezik, az első belépő létrehozza.</li>\n<li>A Meghívás gomb egy háromszavas nevet ajánl fel. A javasolt név szabadon átírható.</li>\n<li>A program ellenőrzi, hogy az asztalnév szabad-e.</li>\n<li>Single játékból meghíváskor az aktuális játékállapot kerül át multiplayer módba; a parti nem indul újra.</li>\n</ul>\n\n<h3>Host és új játék</h3>\n<ul>\n<li>Az első aktív játékos lesz a host.</li>\n<li>Multiplayerben normál esetben a host indíthat új játékot.</li>\n<li>Ha a host már nincs jelen, más aktív játékos átveheti a host szerepet.</li>\n<li>Új játék indításakor a pontok nullázódnak és új pakli készül.</li>\n</ul>\n\n<h3>Eredmények és asztal megszűnése</h3>\n<ul>\n<li>Játék végén az eredmények JSON fájlba letölthetők.</li>\n<li>A host az asztalt kézzel is lezárhatja és törölheti.</li>\n<li>Soha el nem kezdett asztal 24 óra után automatikusan törlődik.</li>\n<li>Már használt asztal 7 nap játék-inaktivitás után automatikusan törlődik.</li>\n<li>Törlés után ugyanaz az asztalnév és URL azonnal újra használható.</li>\n</ul>", "en": "<h3>Basic rule</h3>\n<ul>\n<li>A SET consists of three cards.</li>\n<li>The four properties are number, shape, color and fill.</li>\n<li>For every property, the three values must be either all the same or all different.</li>\n</ul>\n\n<h3>Solo game</h3>\n<ul>\n<li>Solo mode runs entirely in the browser and does not use Supabase.</li>\n<li>After pressing SET!, you have 10 seconds to select three cards.</li>\n<li>Correct SET: +1 point.</li>\n<li>Wrong SET or 10-second timeout: −1 point if possible. At zero points there is no extra penalty.</li>\n<li>New card can be used immediately while cards remain in the deck.</li>\n<li>The game ends when the deck is empty and there is no SET left on the table.</li>\n</ul>\n\n<h3>Multiplayer game</h3>\n<ul>\n<li>All players see the same table, synchronized in real time.</li>\n<li>After a new table state, there is a shared 30-second thinking period.</li>\n<li>After that, a new card may be added only if nobody is still requesting thinking time.</li>\n<li>✋ +30 s requests another 30 seconds. The hand expires automatically or can be lowered early.</li>\n<li>SET! is authorized by the host: only one player can own the SET claim at a time. Claim ownership and every card selection are ordered by the host over the P2P DataChannel. Selection must then start within 3 seconds and finish within 10 seconds. Everyone else sees in real time who called SET, which cards are selected and how much time remains.</li>\n<li>Wrong SET or timeout: −1 point. If there is no point to deduct, the player sits out the next round. After a correct SET, the three matched cards disappear immediately but their slots stay empty: the remaining cards do not move and no replacements are dealt yet. The same player gets 3 seconds of priority to start another SET among the remaining cards; selecting the first card in time gives up to 10 seconds to finish it. A correct find can continue the streak. When priority expires, or the next attempt is wrong/times out, all empty slots are refilled automatically from the deck in one step and a new 30-second shared thinking period starts. The New card button then adds a true extra card; it never fills leftover SET holes one by one.</li>\n<li>A player sitting out cannot call SET, request thinking time or add a new card during that round.</li>\n<li>An observer can watch the table and scores but cannot actively play.</li>\n</ul>\n\n<h3>Tables and invitations</h3>\n<ul>\n<li>Table URLs use a Jitsi-style path: <code>/table-name</code>.</li>\n<li>Example: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>If the table exists, opening the link joins it. If it does not exist, the first player creates it.</li>\n<li>The Invite button suggests a three-word name. You can freely edit the suggestion.</li>\n<li>The app checks that the chosen table name is available.</li>\n<li>Inviting from a solo game promotes the current game state to multiplayer; the game does not restart.</li>\n</ul>\n\n<h3>Host and new games</h3>\n<ul>\n<li>The first active player becomes the host.</li>\n<li>Normally only the host can start a new multiplayer game.</li>\n<li>If the host is no longer present, another active player can take over.</li>\n<li>Starting a new game resets scores and creates a fresh deck.</li>\n</ul>\n\n<h3>Results and table expiry</h3>\n<ul>\n<li>At game end, results can be downloaded as JSON.</li>\n<li>The host can manually close and delete the table.</li>\n<li>A table that was never played is deleted automatically after 24 hours.</li>\n<li>A table that has been played is deleted after 7 days without game activity.</li>\n<li>After deletion, the same table name and URL can be reused immediately.</li>\n</ul>", "de": "<h3>Grundregel</h3>\n<ul>\n<li>Ein SET besteht aus drei Karten.</li>\n<li>Die vier Eigenschaften sind Anzahl, Form, Farbe und Füllung.</li>\n<li>Bei jeder Eigenschaft müssen die drei Werte entweder alle gleich oder alle verschieden sein.</li>\n</ul>\n\n<h3>Einzelspiel</h3>\n<ul>\n<li>Der Einzelspielermodus läuft vollständig im Browser und verwendet Supabase nicht.</li>\n<li>Nach SET! bleiben 10 Sekunden, um drei Karten auszuwählen.</li>\n<li>Richtiges SET: +1 Punkt.</li>\n<li>Falsches SET oder Ablauf der 10 Sekunden: −1 Punkt, falls möglich. Bei null Punkten gibt es keine weitere Strafe.</li>\n<li>Eine neue Karte kann sofort gelegt werden, solange Karten im Stapel vorhanden sind.</li>\n<li>Das Spiel endet, wenn der Stapel leer ist und kein SET mehr auf dem Tisch liegt.</li>\n</ul>\n\n<h3>Mehrspielermodus</h3>\n<ul>\n<li>Alle Spieler sehen denselben Tisch, in Echtzeit synchronisiert.</li>\n<li>Nach einem neuen Tischzustand beginnt eine gemeinsame Denkzeit von 30 Sekunden.</li>\n<li>Danach darf nur dann eine neue Karte gelegt werden, wenn niemand weitere Denkzeit angefordert hat.</li>\n<li>✋ +30 s fordert weitere 30 Sekunden an. Die Hand läuft automatisch ab oder kann vorher gesenkt werden.</li>\n<li>SET! wird vom Host autorisiert: Es kann immer nur ein Spieler das SET-Recht besitzen. Anspruch und jede Kartenauswahl werden über den P2P-DataChannel vom Host geordnet. Danach muss innerhalb von 3 Sekunden mit der Auswahl begonnen und innerhalb von 10 Sekunden abgeschlossen werden. Alle anderen sehen in Echtzeit, wer SET gerufen hat, welche Karten gewählt werden und wie viel Zeit noch bleibt.</li>\n<li>Falsches SET oder Zeitüberschreitung: −1 Punkt. Gibt es keinen Punkt zum Abziehen, setzt der Spieler die nächste Runde aus. Nach einem richtigen SET verschwinden die drei gefundenen Karten sofort, ihre Plätze bleiben jedoch leer: Die übrigen Karten werden nicht verschoben und es werden noch keine Ersatzkarten gelegt. Derselbe Spieler hat 3 Sekunden Vorrang, unter den verbleibenden Karten ein weiteres SET zu beginnen; wird die erste Karte rechtzeitig gewählt, bleiben bis zu 10 Sekunden zum Beenden. Bei einem weiteren richtigen SET kann die Serie fortgesetzt werden. Läuft der Vorrang ab oder ist der nächste Versuch falsch/zu spät, werden alle leeren Plätze in einem Schritt automatisch aus dem Stapel aufgefüllt; danach beginnt eine neue gemeinsame Denkzeit von 30 Sekunden. Die Schaltfläche Neue Karte legt anschließend eine echte Zusatzkarte aus und füllt niemals einzelne verbliebene SET-Lücken.</li>\n<li>Wer aussetzt, darf in dieser Runde kein SET ansagen, keine Denkzeit anfordern und keine neue Karte legen.</li>\n<li>Ein Beobachter kann Tisch und Punkte sehen, aber nicht aktiv mitspielen.</li>\n</ul>\n\n<h3>Tische und Einladungen</h3>\n<ul>\n<li>Tisch-URLs verwenden einen Jitsi-ähnlichen Pfad: <code>/tisch-name</code>.</li>\n<li>Beispiel: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Existiert der Tisch, tritt man über den Link bei. Existiert er nicht, erstellt ihn der erste Spieler.</li>\n<li>Die Einladen-Schaltfläche schlägt einen Namen aus drei Wörtern vor. Der Vorschlag kann frei geändert werden.</li>\n<li>Die App prüft, ob der gewählte Tischname frei ist.</li>\n<li>Wird aus einem Einzelspiel eingeladen, wird der aktuelle Spielstand in den Mehrspielermodus übernommen; die Partie startet nicht neu.</li>\n</ul>\n\n<h3>Host und neues Spiel</h3>\n<ul>\n<li>Der erste aktive Spieler wird Host.</li>\n<li>Normalerweise kann nur der Host ein neues Mehrspielerspiel starten.</li>\n<li>Ist der Host nicht mehr anwesend, kann ein anderer aktiver Spieler übernehmen.</li>\n<li>Bei einem neuen Spiel werden die Punkte zurückgesetzt und ein neuer Stapel erstellt.</li>\n</ul>\n\n<h3>Ergebnisse und Ablauf von Tischen</h3>\n<ul>\n<li>Am Spielende können die Ergebnisse als JSON heruntergeladen werden.</li>\n<li>Der Host kann den Tisch manuell schließen und löschen.</li>\n<li>Ein nie gestarteter Tisch wird nach 24 Stunden automatisch gelöscht.</li>\n<li>Ein benutzter Tisch wird nach 7 Tagen ohne Spielaktivität automatisch gelöscht.</li>\n<li>Nach dem Löschen kann derselbe Tischname und dieselbe URL sofort wieder verwendet werden.</li>\n</ul>"};
+  const helpHtml = {"hu": "<h3>Alapszabály</h3>\n<ul>\n<li>Egy SET három kártyából áll.</li>\n<li>A négy tulajdonság: darabszám, forma, szín és kitöltés.</li>\n<li>Mind a négy tulajdonságnál a három kártya értéke vagy mind azonos, vagy mind különböző.</li>\n</ul>\n\n<h3>Egyéni játék</h3>\n<ul>\n<li>Az egyéni játék teljesen a böngészőben fut, Supabase nélkül.</li>\n<li>A SET! gomb megnyomása után 10 másodperc van három kártya kijelölésére.</li>\n<li>Helyes SET: +1 pont.</li>\n<li>Hibás SET vagy lejárt 10 másodperc: −1 pont, ha van levonható pont. Nulla pontnál nincs további büntetés.</li>\n<li>Az Új kártya gomb bármikor használható, ha van még lap a pakliban.</li>\n<li>A játék akkor ér véget, ha elfogyott a pakli és a kint lévő lapok között nincs több SET.</li>\n</ul>\n\n<h3>Csoportos játék</h3>\n<ul>\n<li>Minden játékos ugyanazt az asztalt látja, valós időben szinkronizálva.</li>\n<li>Új táblaállapot után 30 másodperc közös gondolkodási idő indul.</li>\n<li>Ezután új kártya csak akkor tehető ki, ha senki sem kér további gondolkodási időt.</li>\n<li>A ✋ +30 mp gombbal 30 másodperc további idő kérhető; a kéz automatikusan lejár, vagy korábban levehető.</li>\n<li>A SET! bemondását a host hitelesíti: egyszerre csak egy játékos kap SET-jogot. Ha a játékos nagyon gyorsan már a host válasza előtt rábök az első lapra, a kliens megőrzi ezt a kijelölést és a jog megérkezésekor automatikusan továbbítja. A jog kiosztása és minden kártyakijelölés a P2P DataChannelen a hoston keresztül történik. Ezután 3 másodpercen belül el kell kezdeni a kijelölést, és 10 másodpercen belül be kell fejezni. A többiek valós időben látják, ki mondta a SET-et, mely lapokat jelöli és mennyi ideje maradt.</li>\n<li>Hibás SET vagy lejárt idő: −1 pont. Ha nincs levonható pont, a játékos a következő körből kimarad. Helyes SET után a három megtalált lap azonnal lekerül, de a helyük üresen marad: a többi lap nem rendeződik át és új lap még nem kerül ki. Ugyanaz a játékos 3 másodperc elsőbbséget kap a következő SET elkezdésére a megmaradt lapok között; ha ezalatt kijelöli az első lapot, 10 másodperce van befejezni. Helyes találattal a sorozat folytatható. Amikor a privilégium lejár, vagy a következő próbálkozás hibás/időtúllépéses, az összes üres helyet egyszerre, automatikusan töltjük fel a pakliból, majd új 30 másodperces közös gondolkodási idő indul. Az Új kártya gomb ezután valódi plusz lapot tesz ki; SET után maradt lyukat soha nem egyenként tölt.</li>\n<li>A kimaradó játékos a következő körben nem mondhat SET-et, nem kérhet gondolkodási időt és nem rakhat ki új lapot.</li>\n<li>Megfigyelő láthatja az asztalt és az eredményeket, de nem játszik aktívan.</li>\n</ul>\n\n<h3>Asztalok és meghívás</h3>\n<ul>\n<li>Az asztal URL-je Jitsi-szerű: <code>/asztal-neve</code>.</li>\n<li>Példa: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Ha az asztal létezik, a link megnyitásakor csatlakozol hozzá. Ha nem létezik, az első belépő létrehozza.</li>\n<li>A Meghívás gomb egy háromszavas nevet ajánl fel. A javasolt név szabadon átírható.</li>\n<li>A program ellenőrzi, hogy az asztalnév szabad-e.</li>\n<li>Single játékból meghíváskor az aktuális játékállapot kerül át multiplayer módba; a parti nem indul újra.</li>\n</ul>\n\n<h3>Host és új játék</h3>\n<ul>\n<li>Az első aktív játékos lesz a host.</li>\n<li>Multiplayerben normál esetben a host indíthat új játékot.</li>\n<li>Ha a host már nincs jelen, más aktív játékos átveheti a host szerepet.</li>\n<li>Új játék indításakor a pontok nullázódnak és új pakli készül.</li>\n</ul>\n\n<h3>Eredmények és asztal megszűnése</h3>\n<ul>\n<li>Játék végén az eredmények JSON fájlba letölthetők.</li>\n<li>A host az asztalt kézzel is lezárhatja és törölheti.</li>\n<li>Soha el nem kezdett asztal 24 óra után automatikusan törlődik.</li>\n<li>Már használt asztal 7 nap játék-inaktivitás után automatikusan törlődik.</li>\n<li>Törlés után ugyanaz az asztalnév és URL azonnal újra használható.</li>\n</ul>", "en": "<h3>Basic rule</h3>\n<ul>\n<li>A SET consists of three cards.</li>\n<li>The four properties are number, shape, color and fill.</li>\n<li>For every property, the three values must be either all the same or all different.</li>\n</ul>\n\n<h3>Solo game</h3>\n<ul>\n<li>Solo mode runs entirely in the browser and does not use Supabase.</li>\n<li>After pressing SET!, you have 10 seconds to select three cards.</li>\n<li>Correct SET: +1 point.</li>\n<li>Wrong SET or 10-second timeout: −1 point if possible. At zero points there is no extra penalty.</li>\n<li>New card can be used immediately while cards remain in the deck.</li>\n<li>The game ends when the deck is empty and there is no SET left on the table.</li>\n</ul>\n\n<h3>Multiplayer game</h3>\n<ul>\n<li>All players see the same table, synchronized in real time.</li>\n<li>After a new table state, there is a shared 30-second thinking period.</li>\n<li>After that, a new card may be added only if nobody is still requesting thinking time.</li>\n<li>✋ +30 s requests another 30 seconds. The hand expires automatically or can be lowered early.</li>\n<li>SET! is authorized by the host: only one player can own the SET claim at a time. If the player taps the first card before the host grant completes its round trip, the client queues that tap and sends it automatically when the grant arrives. Claim ownership and every card selection are ordered by the host over the P2P DataChannel. Selection must then start within 3 seconds and finish within 10 seconds. Everyone else sees in real time who called SET, which cards are selected and how much time remains.</li>\n<li>Wrong SET or timeout: −1 point. If there is no point to deduct, the player sits out the next round. After a correct SET, the three matched cards disappear immediately but their slots stay empty: the remaining cards do not move and no replacements are dealt yet. The same player gets 3 seconds of priority to start another SET among the remaining cards; selecting the first card in time gives up to 10 seconds to finish it. A correct find can continue the streak. When priority expires, or the next attempt is wrong/times out, all empty slots are refilled automatically from the deck in one step and a new 30-second shared thinking period starts. The New card button then adds a true extra card; it never fills leftover SET holes one by one.</li>\n<li>A player sitting out cannot call SET, request thinking time or add a new card during that round.</li>\n<li>An observer can watch the table and scores but cannot actively play.</li>\n</ul>\n\n<h3>Tables and invitations</h3>\n<ul>\n<li>Table URLs use a Jitsi-style path: <code>/table-name</code>.</li>\n<li>Example: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>If the table exists, opening the link joins it. If it does not exist, the first player creates it.</li>\n<li>The Invite button suggests a three-word name. You can freely edit the suggestion.</li>\n<li>The app checks that the chosen table name is available.</li>\n<li>Inviting from a solo game promotes the current game state to multiplayer; the game does not restart.</li>\n</ul>\n\n<h3>Host and new games</h3>\n<ul>\n<li>The first active player becomes the host.</li>\n<li>Normally only the host can start a new multiplayer game.</li>\n<li>If the host is no longer present, another active player can take over.</li>\n<li>Starting a new game resets scores and creates a fresh deck.</li>\n</ul>\n\n<h3>Results and table expiry</h3>\n<ul>\n<li>At game end, results can be downloaded as JSON.</li>\n<li>The host can manually close and delete the table.</li>\n<li>A table that was never played is deleted automatically after 24 hours.</li>\n<li>A table that has been played is deleted after 7 days without game activity.</li>\n<li>After deletion, the same table name and URL can be reused immediately.</li>\n</ul>", "de": "<h3>Grundregel</h3>\n<ul>\n<li>Ein SET besteht aus drei Karten.</li>\n<li>Die vier Eigenschaften sind Anzahl, Form, Farbe und Füllung.</li>\n<li>Bei jeder Eigenschaft müssen die drei Werte entweder alle gleich oder alle verschieden sein.</li>\n</ul>\n\n<h3>Einzelspiel</h3>\n<ul>\n<li>Der Einzelspielermodus läuft vollständig im Browser und verwendet Supabase nicht.</li>\n<li>Nach SET! bleiben 10 Sekunden, um drei Karten auszuwählen.</li>\n<li>Richtiges SET: +1 Punkt.</li>\n<li>Falsches SET oder Ablauf der 10 Sekunden: −1 Punkt, falls möglich. Bei null Punkten gibt es keine weitere Strafe.</li>\n<li>Eine neue Karte kann sofort gelegt werden, solange Karten im Stapel vorhanden sind.</li>\n<li>Das Spiel endet, wenn der Stapel leer ist und kein SET mehr auf dem Tisch liegt.</li>\n</ul>\n\n<h3>Mehrspielermodus</h3>\n<ul>\n<li>Alle Spieler sehen denselben Tisch, in Echtzeit synchronisiert.</li>\n<li>Nach einem neuen Tischzustand beginnt eine gemeinsame Denkzeit von 30 Sekunden.</li>\n<li>Danach darf nur dann eine neue Karte gelegt werden, wenn niemand weitere Denkzeit angefordert hat.</li>\n<li>✋ +30 s fordert weitere 30 Sekunden an. Die Hand läuft automatisch ab oder kann vorher gesenkt werden.</li>\n<li>SET! wird vom Host autorisiert: Es kann immer nur ein Spieler das SET-Recht besitzen. Wird die erste Karte sehr schnell noch vor der Host-Bestätigung angetippt, speichert der Client diese Auswahl und sendet sie automatisch nach Erhalt der Freigabe. Anspruch und jede Kartenauswahl werden über den P2P-DataChannel vom Host geordnet. Danach muss innerhalb von 3 Sekunden mit der Auswahl begonnen und innerhalb von 10 Sekunden abgeschlossen werden. Alle anderen sehen in Echtzeit, wer SET gerufen hat, welche Karten gewählt werden und wie viel Zeit noch bleibt.</li>\n<li>Falsches SET oder Zeitüberschreitung: −1 Punkt. Gibt es keinen Punkt zum Abziehen, setzt der Spieler die nächste Runde aus. Nach einem richtigen SET verschwinden die drei gefundenen Karten sofort, ihre Plätze bleiben jedoch leer: Die übrigen Karten werden nicht verschoben und es werden noch keine Ersatzkarten gelegt. Derselbe Spieler hat 3 Sekunden Vorrang, unter den verbleibenden Karten ein weiteres SET zu beginnen; wird die erste Karte rechtzeitig gewählt, bleiben bis zu 10 Sekunden zum Beenden. Bei einem weiteren richtigen SET kann die Serie fortgesetzt werden. Läuft der Vorrang ab oder ist der nächste Versuch falsch/zu spät, werden alle leeren Plätze in einem Schritt automatisch aus dem Stapel aufgefüllt; danach beginnt eine neue gemeinsame Denkzeit von 30 Sekunden. Die Schaltfläche Neue Karte legt anschließend eine echte Zusatzkarte aus und füllt niemals einzelne verbliebene SET-Lücken.</li>\n<li>Wer aussetzt, darf in dieser Runde kein SET ansagen, keine Denkzeit anfordern und keine neue Karte legen.</li>\n<li>Ein Beobachter kann Tisch und Punkte sehen, aber nicht aktiv mitspielen.</li>\n</ul>\n\n<h3>Tische und Einladungen</h3>\n<ul>\n<li>Tisch-URLs verwenden einen Jitsi-ähnlichen Pfad: <code>/tisch-name</code>.</li>\n<li>Beispiel: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Existiert der Tisch, tritt man über den Link bei. Existiert er nicht, erstellt ihn der erste Spieler.</li>\n<li>Die Einladen-Schaltfläche schlägt einen Namen aus drei Wörtern vor. Der Vorschlag kann frei geändert werden.</li>\n<li>Die App prüft, ob der gewählte Tischname frei ist.</li>\n<li>Wird aus einem Einzelspiel eingeladen, wird der aktuelle Spielstand in den Mehrspielermodus übernommen; die Partie startet nicht neu.</li>\n</ul>\n\n<h3>Host und neues Spiel</h3>\n<ul>\n<li>Der erste aktive Spieler wird Host.</li>\n<li>Normalerweise kann nur der Host ein neues Mehrspielerspiel starten.</li>\n<li>Ist der Host nicht mehr anwesend, kann ein anderer aktiver Spieler übernehmen.</li>\n<li>Bei einem neuen Spiel werden die Punkte zurückgesetzt und ein neuer Stapel erstellt.</li>\n</ul>\n\n<h3>Ergebnisse und Ablauf von Tischen</h3>\n<ul>\n<li>Am Spielende können die Ergebnisse als JSON heruntergeladen werden.</li>\n<li>Der Host kann den Tisch manuell schließen und löschen.</li>\n<li>Ein nie gestarteter Tisch wird nach 24 Stunden automatisch gelöscht.</li>\n<li>Ein benutzter Tisch wird nach 7 Tagen ohne Spielaktivität automatisch gelöscht.</li>\n<li>Nach dem Löschen kann derselbe Tischname und dieselbe URL sofort wieder verwendet werden.</li>\n</ul>"};
 
   function renderHelpContent() {
     helpContent.innerHTML = helpHtml[currentLang] || helpHtml.en;
@@ -2049,7 +2052,8 @@
       const pc = hostPeer?.connectionState || (isHostClient ? 'host' : '—');
       const ice = hostPeer?.iceConnectionState || '—';
       const dc = hostDataChannel?.readyState || (isHostClient ? `${dataChannels.size} peer(s)` : '—');
-      diagSummaryEl.textContent = `PC ${pc} · ICE ${ice} · DC ${dc}`;
+      const claim = hostSetClaim ? `${hostSetClaim.state}:${hostSetClaim.name}` : (setClaimPending ? 'pending' : '—');
+      diagSummaryEl.textContent = `PC ${pc} · ICE ${ice} · DC ${dc} · SET ${claim}`;
     }
     if (!diagPanel.classList.contains('hidden')) diagLogEl.scrollTop = diagLogEl.scrollHeight;
   }
@@ -2472,7 +2476,16 @@
       return;
     }
     if (msg.type === 'set_claim_request') {
-      hostGrantSetClaim(peerId);
+      const granted = hostGrantSetClaim(peerId);
+      const ch = dataChannels.get(peerId);
+      safeJsonSend(ch, {
+        type:'set_claim_result',
+        request_id:msg.request_id || null,
+        granted,
+        claim:hostSetClaim,
+        owner_name:hostSetClaim?.name || null
+      });
+      diag('SET_CLAIM_RESULT_TX', `${peerId.slice(0,8)} granted=${granted}`);
       return;
     }
 
@@ -2610,9 +2623,54 @@
       return;
     }
 
+    if (msg.type === 'set_claim_result') {
+      diag('SET_CLAIM_RESULT_RX', `granted=${!!msg.granted} owner=${msg.owner_name || '—'}`);
+
+      if (msg.request_id && Number(msg.request_id) !== Number(setClaimRequestId)) {
+        return;
+      }
+
+      setClaimPending = false;
+
+      if (msg.granted) {
+        setHostClaim(msg.claim || null, false);
+
+        // A very fast tap may happen before the host's grant round-trip arrives.
+        // Replay those taps now, in original order.
+        while (pendingSetCardIds.length) {
+          const cardId = pendingSetCardIds.shift();
+          safeJsonSend(hostDataChannel, {type:'set_select_card', card_id:cardId});
+        }
+
+        message.textContent = t('setDeclared');
+      } else {
+        pendingSetCardIds.length = 0;
+        selected = [];
+        declaringSet = false;
+        setDeadline = 0;
+
+        if (msg.owner_name) message.textContent = t('liveSetBusy')(msg.owner_name);
+        else message.textContent = t('updateConflict');
+        render();
+      }
+      return;
+    }
+
     if (msg.type === 'set_claim_state') {
       diag('SET_CLAIM_STATE', msg.claim ? `${msg.claim.state} ${msg.claim.name} selected=${(msg.claim.selected||[]).length}` : 'clear');
-      setHostClaim(msg.claim || null, false);
+
+      // Broadcast state may arrive before the explicit ACK. If it is ours,
+      // consider the claim granted immediately and flush queued taps.
+      if (msg.claim?.client_id === clientId) {
+        setClaimPending = false;
+        setHostClaim(msg.claim, false);
+        while (pendingSetCardIds.length) {
+          const cardId = pendingSetCardIds.shift();
+          safeJsonSend(hostDataChannel, {type:'set_select_card', card_id:cardId});
+        }
+      } else {
+        setHostClaim(msg.claim || null, false);
+      }
       return;
     }
 
@@ -2946,6 +3004,9 @@
     processedSignalIds.clear();
     peerPingState.clear();
     guestRttMs = null;
+    setClaimPending = false;
+    pendingSetCardIds.length = 0;
+    hostSetClaim = null;
     setP2PPhase('idle');
     if (resetQuality) renderConnectionQuality();
   }
@@ -3050,7 +3111,12 @@
   function setHostClaim(claim, broadcast = false) {
     hostSetClaim = claim ? {...claim, selected:[...(claim.selected || [])]} : null;
 
+    if (!hostSetClaim || hostSetClaim.client_id !== clientId) {
+      if (!setClaimPending) pendingSetCardIds.length = 0;
+    }
+
     if (hostSetClaim && hostSetClaim.client_id === clientId) {
+      setClaimPending = false;
       selected = [...(hostSetClaim.selected || [])];
       declaringSet = hostSetClaim.state === 'selecting';
       setDeadline = Number(hostSetClaim.deadline || 0);
@@ -3296,15 +3362,41 @@
   }
 
   function requestHostSetClaim() {
+    setClaimRequestId++;
+    setClaimPending = true;
+    pendingSetCardIds.length = 0;
+
     if (isHostClient) {
-      hostGrantSetClaim(clientId);
-      return;
+      const granted = hostGrantSetClaim(clientId);
+      setClaimPending = false;
+      if (!granted) {
+        declaringSet = false;
+        return false;
+      }
+      return true;
     }
+
     if (!hostDataChannel || hostDataChannel.readyState !== 'open') {
+      setClaimPending = false;
+      declaringSet = false;
       message.textContent = t('chatDisconnected');
-      return;
+      return false;
     }
-    safeJsonSend(hostDataChannel, {type:'set_claim_request'});
+
+    const ok = safeJsonSend(hostDataChannel, {
+      type:'set_claim_request',
+      request_id:setClaimRequestId
+    });
+
+    if (!ok) {
+      setClaimPending = false;
+      declaringSet = false;
+      message.textContent = t('chatDisconnected');
+      return false;
+    }
+
+    diag('SET_CLAIM_REQUEST', `request=${setClaimRequestId}`);
+    return true;
   }
 
   function requestHostCardSelection(id) {
@@ -4329,10 +4421,25 @@
 
   async function selectCardMultiplayer(id) {
     const claim = currentLiveClaim();
+
     if (!claim) {
+      if (setClaimPending && declaringSet) {
+        // The SET request is in flight to the host. Keep the user's fast tap
+        // and replay it immediately after the host grants the claim.
+        if (!pendingSetCardIds.includes(id) && pendingSetCardIds.length < 3) {
+          pendingSetCardIds.push(id);
+          if (!selected.includes(id)) selected.push(id);
+        }
+        diag('SET_CARD_QUEUED', `${id} pending-claim`);
+        render();
+        message.textContent = t('chooseMore')(Math.max(0, 3 - pendingSetCardIds.length));
+        return;
+      }
+
       message.textContent = t('firstSet');
       return;
     }
+
     if (claim.client_id !== clientId) {
       message.textContent = t('liveSetBusy')(claim.name);
       return;
@@ -4610,10 +4717,12 @@
       }
 
       selected = [];
+      pendingSetCardIds.length = 0;
       declaringSet = true;
       setDeadline = Date.now() + SET_MS;
-      requestHostSetClaim();
-      message.textContent = t('setDeclared');
+
+      const requested = requestHostSetClaim();
+      if (requested) message.textContent = t('setDeclared');
       return;
     }
 

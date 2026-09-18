@@ -1,16 +1,18 @@
-SET GitHub Pages – host-authoritative multiplayer SET claims
+SET GitHub Pages – SET claim ACK/race fix
 
-Major multiplayer change:
-- SET claim state is no longer stored in Presence.
-- Player sends SET_CLAIM_REQUEST to host.
-- Host grants exactly one authoritative claim.
-- Card selections go to host as SET_SELECT_CARD.
-- Host broadcasts SET_CLAIM_STATE to all clients.
-- Host validates the 3-card SET, score, penalty, 3-second priority,
-  10-second selection timeout and refill.
-- Presence is now only presence/role/thinking/last activity.
-- Stale Presence snapshots can no longer erase an active SET claim.
-- Existing chat, diagnostics, stable P2P status, host migration and
-  new-card logic are preserved.
+Fixes the 'Press SET first' bug when a player taps a card immediately after SET!.
+
+Cause:
+- SET claim is host-authoritative.
+- The UI previously said 'select cards' before the host grant had returned.
+- A fast card tap saw no authoritative claim yet and was rejected.
+
+Fix:
+- Every SET claim request now has an explicit host ACK/NACK.
+- Client tracks a pending SET claim.
+- Card taps made while the host grant is in flight are queued.
+- As soon as host grant/broadcast arrives, queued taps are replayed in order.
+- If another player owns the claim, host sends an explicit rejection.
+- Diagnostics now include SET pending/grant state.
 
 No new Supabase SQL required.
