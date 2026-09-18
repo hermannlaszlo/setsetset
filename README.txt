@@ -1,17 +1,16 @@
-SET GitHub Pages - card draw / SET streak logic fix
+SET GitHub Pages – host-authoritative multiplayer SET claims
 
-Fixes:
-- Expired multiplayer claims are now handled from raw local presence state.
-  Previously currentLiveClaim() hid an expired claim before the timer could act.
-- This fixes 3-second priority expiry, 3-second selection-start timeout, and
-  10-second selection timeout.
-- At SET streak end, ALL empty slots are refilled automatically in one atomic
-  transition; remaining cards keep their positions.
-- A fresh 30-second shared thinking period starts after that refill.
-- Multiplayer New card never fills a SET hole. It only adds a true extra card.
-- New card is disabled while holes remain. A stale-hole recovery path finalizes
-  the streak without adding an extra card.
-- Added a guard against duplicate concurrent streak-finalization calls.
-- Help updated in HU/EN/DE.
+Major multiplayer change:
+- SET claim state is no longer stored in Presence.
+- Player sends SET_CLAIM_REQUEST to host.
+- Host grants exactly one authoritative claim.
+- Card selections go to host as SET_SELECT_CARD.
+- Host broadcasts SET_CLAIM_STATE to all clients.
+- Host validates the 3-card SET, score, penalty, 3-second priority,
+  10-second selection timeout and refill.
+- Presence is now only presence/role/thinking/last activity.
+- Stale Presence snapshots can no longer erase an active SET claim.
+- Existing chat, diagnostics, stable P2P status, host migration and
+  new-card logic are preserved.
 
-No new Supabase SQL is required.
+No new Supabase SQL required.

@@ -102,6 +102,9 @@
       gap: 8px 14px; margin-bottom: 12px; font-size: 14px; color: var(--muted);
     }
     .roomline strong { color: var(--text); }
+    #connection-text { display:inline-block; min-width:96px; }
+    #connection-quality { display:inline-block; min-width:92px; }
+    #p2p-phase { display:inline-block; min-width:120px; }
     .status-dot {
       display: inline-block; width: 9px; height: 9px; border-radius: 50%;
       background: #9ca3af; margin-right: 5px;
@@ -264,6 +267,26 @@
       border-radius: 999px; background: var(--bad); color: white;
       font-size: 11px; line-height: 17px; text-align: center;
     }
+    .diag-panel {
+      position: fixed; z-index: 960;
+      left: 12px; top: 80px;
+      width: min(620px, calc(100vw - 24px));
+      height: min(520px, calc(100vh - 100px));
+      display:flex; flex-direction:column;
+      border:1px solid var(--border); border-radius:16px;
+      background:var(--panel); box-shadow:0 18px 50px rgba(0,0,0,.24);
+      overflow:hidden;
+    }
+    .diag-log {
+      flex:1; min-height:0; overflow:auto; margin:0; padding:10px;
+      background:#111; color:#eee; font:12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space:pre-wrap; overflow-wrap:anywhere;
+    }
+    .diag-actions {
+      display:flex; gap:8px; padding:10px; border-top:1px solid var(--border);
+      flex-wrap:wrap;
+    }
+    .diag-actions button { min-height:38px; }
     .chat-panel {
       position: fixed; z-index: 950;
       right: max(12px, env(safe-area-inset-right));
@@ -539,6 +562,7 @@
       <button id="new-card" class="primary" type="button" data-i18n="newCard">New card</button>
       <button id="has-set" type="button" data-i18n="hasSet">Any SET?</button>
       <button id="chat-btn" class="chat-icon-btn multiplayer-only" type="button" aria-label="Chat" title="Chat">💬<span id="chat-unread" class="chat-unread hidden">0</span></button>
+      <button id="diag-btn" class="chat-icon-btn multiplayer-only" type="button" aria-label="P2P Diagnose" title="P2P Diagnose">⌁</button>
       <button id="help-btn" class="help-icon-btn" type="button" aria-label="Help" title="Help">?</button>
       <button id="copy-invite-btn" type="button" data-i18n="copyInvite">Invite</button>
       <button id="leave-room" type="button" data-i18n="leave">Leave</button>
@@ -650,6 +674,19 @@
     </div>
   </section>
 
+  <div id="diag-panel" class="diag-panel hidden" role="dialog" aria-labelledby="diag-title">
+    <div id="diag-drag-handle" class="chat-header" title="Drag">
+      <div><strong id="diag-title">P2P Diagnose</strong><div id="diag-summary" class="chat-status"></div></div>
+      <button id="diag-close-btn" class="chat-close-btn" type="button" aria-label="Close">×</button>
+    </div>
+    <pre id="diag-log" class="diag-log"></pre>
+    <div class="diag-actions">
+      <button id="diag-copy-btn" type="button">Copy log</button>
+      <button id="diag-download-btn" type="button">Download log</button>
+      <button id="diag-clear-btn" type="button">Clear</button>
+    </div>
+  </div>
+
   <div id="chat-panel" class="chat-panel hidden" role="dialog" aria-labelledby="chat-title">
     <div id="chat-drag-handle" class="chat-header" title="Drag">
       <div>
@@ -729,6 +766,15 @@
   const currentHostEl = document.getElementById('current-host');
   const copyInviteBtn = document.getElementById('copy-invite-btn');
   const chatBtn = document.getElementById('chat-btn');
+  const diagBtn = document.getElementById('diag-btn');
+  const diagPanel = document.getElementById('diag-panel');
+  const diagDragHandle = document.getElementById('diag-drag-handle');
+  const diagCloseBtn = document.getElementById('diag-close-btn');
+  const diagLogEl = document.getElementById('diag-log');
+  const diagSummaryEl = document.getElementById('diag-summary');
+  const diagCopyBtn = document.getElementById('diag-copy-btn');
+  const diagDownloadBtn = document.getElementById('diag-download-btn');
+  const diagClearBtn = document.getElementById('diag-clear-btn');
   const chatUnreadEl = document.getElementById('chat-unread');
   const chatPanel = document.getElementById('chat-panel');
   const chatCloseBtn = document.getElementById('chat-close-btn');
@@ -1198,10 +1244,13 @@
   let hostHeartbeatTimer = null;
   let p2pStarted = false;
   let p2pConnected = false;
+  let hostSetClaim = null; // authoritative multiplayer SET claim, owned by host
   let p2pPhase = 'idle';
   let signalingReleaseTimer = null;
   let guestReconnectTimer = null;
+  let guestDisconnectGraceTimer = null;
   let guestConnectAttempts = 0;
+  const DISCONNECT_GRACE_MS = 8000;
   const processedSignalIds = new Set();
   let pingTimer = null;
   let pingSeq = 0;
@@ -1447,7 +1496,7 @@
     multiplayerOnlyEls.forEach(el => el.classList.toggle('hidden', solo));
   }
 
-  const helpHtml = {"hu": "<h3>Alapszabály</h3>\n<ul>\n<li>Egy SET három kártyából áll.</li>\n<li>A négy tulajdonság: darabszám, forma, szín és kitöltés.</li>\n<li>Mind a négy tulajdonságnál a három kártya értéke vagy mind azonos, vagy mind különböző.</li>\n</ul>\n\n<h3>Egyéni játék</h3>\n<ul>\n<li>Az egyéni játék teljesen a böngészőben fut, Supabase nélkül.</li>\n<li>A SET! gomb megnyomása után 10 másodperc van három kártya kijelölésére.</li>\n<li>Helyes SET: +1 pont.</li>\n<li>Hibás SET vagy lejárt 10 másodperc: −1 pont, ha van levonható pont. Nulla pontnál nincs további büntetés.</li>\n<li>Az Új kártya gomb bármikor használható, ha van még lap a pakliban.</li>\n<li>A játék akkor ér véget, ha elfogyott a pakli és a kint lévő lapok között nincs több SET.</li>\n</ul>\n\n<h3>Csoportos játék</h3>\n<ul>\n<li>Minden játékos ugyanazt az asztalt látja, valós időben szinkronizálva.</li>\n<li>Új táblaállapot után 30 másodperc közös gondolkodási idő indul.</li>\n<li>Ezután új kártya csak akkor tehető ki, ha senki sem kér további gondolkodási időt.</li>\n<li>A ✋ +30 mp gombbal 30 másodperc további idő kérhető; a kéz automatikusan lejár, vagy korábban levehető.</li>\n<li>A SET! bemondása után 3 másodpercen belül el kell kezdeni a kijelölést, és 10 másodpercen belül be kell fejezni. A többiek valós időben látják, ki mondta a SET-et, mely lapokat jelöli és mennyi ideje maradt.</li>\n<li>Hibás SET vagy lejárt idő: −1 pont. Ha nincs levonható pont, a játékos a következő körből kimarad. Helyes SET után a három megtalált lap azonnal lekerül, de a helyük üresen marad: a többi lap nem rendeződik át és új lap még nem kerül ki. Ugyanaz a játékos 3 másodperc elsőbbséget kap a következő SET elkezdésére a megmaradt lapok között; ha ezalatt kijelöli az első lapot, 10 másodperce van befejezni. Helyes találattal a sorozat folytatható. Amikor a privilégium lejár, vagy a következő próbálkozás hibás/időtúllépéses, az összes üres helyet egyszerre, automatikusan töltjük fel a pakliból, majd új 30 másodperces közös gondolkodási idő indul. Az Új kártya gomb ezután valódi plusz lapot tesz ki; SET után maradt lyukat soha nem egyenként tölt.</li>\n<li>A kimaradó játékos a következő körben nem mondhat SET-et, nem kérhet gondolkodási időt és nem rakhat ki új lapot.</li>\n<li>Megfigyelő láthatja az asztalt és az eredményeket, de nem játszik aktívan.</li>\n</ul>\n\n<h3>Asztalok és meghívás</h3>\n<ul>\n<li>Az asztal URL-je Jitsi-szerű: <code>/asztal-neve</code>.</li>\n<li>Példa: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Ha az asztal létezik, a link megnyitásakor csatlakozol hozzá. Ha nem létezik, az első belépő létrehozza.</li>\n<li>A Meghívás gomb egy háromszavas nevet ajánl fel. A javasolt név szabadon átírható.</li>\n<li>A program ellenőrzi, hogy az asztalnév szabad-e.</li>\n<li>Single játékból meghíváskor az aktuális játékállapot kerül át multiplayer módba; a parti nem indul újra.</li>\n</ul>\n\n<h3>Host és új játék</h3>\n<ul>\n<li>Az első aktív játékos lesz a host.</li>\n<li>Multiplayerben normál esetben a host indíthat új játékot.</li>\n<li>Ha a host már nincs jelen, más aktív játékos átveheti a host szerepet.</li>\n<li>Új játék indításakor a pontok nullázódnak és új pakli készül.</li>\n</ul>\n\n<h3>Eredmények és asztal megszűnése</h3>\n<ul>\n<li>Játék végén az eredmények JSON fájlba letölthetők.</li>\n<li>A host az asztalt kézzel is lezárhatja és törölheti.</li>\n<li>Soha el nem kezdett asztal 24 óra után automatikusan törlődik.</li>\n<li>Már használt asztal 7 nap játék-inaktivitás után automatikusan törlődik.</li>\n<li>Törlés után ugyanaz az asztalnév és URL azonnal újra használható.</li>\n</ul>", "en": "<h3>Basic rule</h3>\n<ul>\n<li>A SET consists of three cards.</li>\n<li>The four properties are number, shape, color and fill.</li>\n<li>For every property, the three values must be either all the same or all different.</li>\n</ul>\n\n<h3>Solo game</h3>\n<ul>\n<li>Solo mode runs entirely in the browser and does not use Supabase.</li>\n<li>After pressing SET!, you have 10 seconds to select three cards.</li>\n<li>Correct SET: +1 point.</li>\n<li>Wrong SET or 10-second timeout: −1 point if possible. At zero points there is no extra penalty.</li>\n<li>New card can be used immediately while cards remain in the deck.</li>\n<li>The game ends when the deck is empty and there is no SET left on the table.</li>\n</ul>\n\n<h3>Multiplayer game</h3>\n<ul>\n<li>All players see the same table, synchronized in real time.</li>\n<li>After a new table state, there is a shared 30-second thinking period.</li>\n<li>After that, a new card may be added only if nobody is still requesting thinking time.</li>\n<li>✋ +30 s requests another 30 seconds. The hand expires automatically or can be lowered early.</li>\n<li>After calling SET!, selection must start within 3 seconds and finish within 10 seconds. Everyone else sees in real time who called SET, which cards are selected and how much time remains.</li>\n<li>Wrong SET or timeout: −1 point. If there is no point to deduct, the player sits out the next round. After a correct SET, the three matched cards disappear immediately but their slots stay empty: the remaining cards do not move and no replacements are dealt yet. The same player gets 3 seconds of priority to start another SET among the remaining cards; selecting the first card in time gives up to 10 seconds to finish it. A correct find can continue the streak. When priority expires, or the next attempt is wrong/times out, all empty slots are refilled automatically from the deck in one step and a new 30-second shared thinking period starts. The New card button then adds a true extra card; it never fills leftover SET holes one by one.</li>\n<li>A player sitting out cannot call SET, request thinking time or add a new card during that round.</li>\n<li>An observer can watch the table and scores but cannot actively play.</li>\n</ul>\n\n<h3>Tables and invitations</h3>\n<ul>\n<li>Table URLs use a Jitsi-style path: <code>/table-name</code>.</li>\n<li>Example: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>If the table exists, opening the link joins it. If it does not exist, the first player creates it.</li>\n<li>The Invite button suggests a three-word name. You can freely edit the suggestion.</li>\n<li>The app checks that the chosen table name is available.</li>\n<li>Inviting from a solo game promotes the current game state to multiplayer; the game does not restart.</li>\n</ul>\n\n<h3>Host and new games</h3>\n<ul>\n<li>The first active player becomes the host.</li>\n<li>Normally only the host can start a new multiplayer game.</li>\n<li>If the host is no longer present, another active player can take over.</li>\n<li>Starting a new game resets scores and creates a fresh deck.</li>\n</ul>\n\n<h3>Results and table expiry</h3>\n<ul>\n<li>At game end, results can be downloaded as JSON.</li>\n<li>The host can manually close and delete the table.</li>\n<li>A table that was never played is deleted automatically after 24 hours.</li>\n<li>A table that has been played is deleted after 7 days without game activity.</li>\n<li>After deletion, the same table name and URL can be reused immediately.</li>\n</ul>", "de": "<h3>Grundregel</h3>\n<ul>\n<li>Ein SET besteht aus drei Karten.</li>\n<li>Die vier Eigenschaften sind Anzahl, Form, Farbe und Füllung.</li>\n<li>Bei jeder Eigenschaft müssen die drei Werte entweder alle gleich oder alle verschieden sein.</li>\n</ul>\n\n<h3>Einzelspiel</h3>\n<ul>\n<li>Der Einzelspielermodus läuft vollständig im Browser und verwendet Supabase nicht.</li>\n<li>Nach SET! bleiben 10 Sekunden, um drei Karten auszuwählen.</li>\n<li>Richtiges SET: +1 Punkt.</li>\n<li>Falsches SET oder Ablauf der 10 Sekunden: −1 Punkt, falls möglich. Bei null Punkten gibt es keine weitere Strafe.</li>\n<li>Eine neue Karte kann sofort gelegt werden, solange Karten im Stapel vorhanden sind.</li>\n<li>Das Spiel endet, wenn der Stapel leer ist und kein SET mehr auf dem Tisch liegt.</li>\n</ul>\n\n<h3>Mehrspielermodus</h3>\n<ul>\n<li>Alle Spieler sehen denselben Tisch, in Echtzeit synchronisiert.</li>\n<li>Nach einem neuen Tischzustand beginnt eine gemeinsame Denkzeit von 30 Sekunden.</li>\n<li>Danach darf nur dann eine neue Karte gelegt werden, wenn niemand weitere Denkzeit angefordert hat.</li>\n<li>✋ +30 s fordert weitere 30 Sekunden an. Die Hand läuft automatisch ab oder kann vorher gesenkt werden.</li>\n<li>Nach SET! muss innerhalb von 3 Sekunden mit der Auswahl begonnen und innerhalb von 10 Sekunden abgeschlossen werden. Alle anderen sehen in Echtzeit, wer SET gerufen hat, welche Karten gewählt werden und wie viel Zeit noch bleibt.</li>\n<li>Falsches SET oder Zeitüberschreitung: −1 Punkt. Gibt es keinen Punkt zum Abziehen, setzt der Spieler die nächste Runde aus. Nach einem richtigen SET verschwinden die drei gefundenen Karten sofort, ihre Plätze bleiben jedoch leer: Die übrigen Karten werden nicht verschoben und es werden noch keine Ersatzkarten gelegt. Derselbe Spieler hat 3 Sekunden Vorrang, unter den verbleibenden Karten ein weiteres SET zu beginnen; wird die erste Karte rechtzeitig gewählt, bleiben bis zu 10 Sekunden zum Beenden. Bei einem weiteren richtigen SET kann die Serie fortgesetzt werden. Läuft der Vorrang ab oder ist der nächste Versuch falsch/zu spät, werden alle leeren Plätze in einem Schritt automatisch aus dem Stapel aufgefüllt; danach beginnt eine neue gemeinsame Denkzeit von 30 Sekunden. Die Schaltfläche Neue Karte legt anschließend eine echte Zusatzkarte aus und füllt niemals einzelne verbliebene SET-Lücken.</li>\n<li>Wer aussetzt, darf in dieser Runde kein SET ansagen, keine Denkzeit anfordern und keine neue Karte legen.</li>\n<li>Ein Beobachter kann Tisch und Punkte sehen, aber nicht aktiv mitspielen.</li>\n</ul>\n\n<h3>Tische und Einladungen</h3>\n<ul>\n<li>Tisch-URLs verwenden einen Jitsi-ähnlichen Pfad: <code>/tisch-name</code>.</li>\n<li>Beispiel: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Existiert der Tisch, tritt man über den Link bei. Existiert er nicht, erstellt ihn der erste Spieler.</li>\n<li>Die Einladen-Schaltfläche schlägt einen Namen aus drei Wörtern vor. Der Vorschlag kann frei geändert werden.</li>\n<li>Die App prüft, ob der gewählte Tischname frei ist.</li>\n<li>Wird aus einem Einzelspiel eingeladen, wird der aktuelle Spielstand in den Mehrspielermodus übernommen; die Partie startet nicht neu.</li>\n</ul>\n\n<h3>Host und neues Spiel</h3>\n<ul>\n<li>Der erste aktive Spieler wird Host.</li>\n<li>Normalerweise kann nur der Host ein neues Mehrspielerspiel starten.</li>\n<li>Ist der Host nicht mehr anwesend, kann ein anderer aktiver Spieler übernehmen.</li>\n<li>Bei einem neuen Spiel werden die Punkte zurückgesetzt und ein neuer Stapel erstellt.</li>\n</ul>\n\n<h3>Ergebnisse und Ablauf von Tischen</h3>\n<ul>\n<li>Am Spielende können die Ergebnisse als JSON heruntergeladen werden.</li>\n<li>Der Host kann den Tisch manuell schließen und löschen.</li>\n<li>Ein nie gestarteter Tisch wird nach 24 Stunden automatisch gelöscht.</li>\n<li>Ein benutzter Tisch wird nach 7 Tagen ohne Spielaktivität automatisch gelöscht.</li>\n<li>Nach dem Löschen kann derselbe Tischname und dieselbe URL sofort wieder verwendet werden.</li>\n</ul>"};
+  const helpHtml = {"hu": "<h3>Alapszabály</h3>\n<ul>\n<li>Egy SET három kártyából áll.</li>\n<li>A négy tulajdonság: darabszám, forma, szín és kitöltés.</li>\n<li>Mind a négy tulajdonságnál a három kártya értéke vagy mind azonos, vagy mind különböző.</li>\n</ul>\n\n<h3>Egyéni játék</h3>\n<ul>\n<li>Az egyéni játék teljesen a böngészőben fut, Supabase nélkül.</li>\n<li>A SET! gomb megnyomása után 10 másodperc van három kártya kijelölésére.</li>\n<li>Helyes SET: +1 pont.</li>\n<li>Hibás SET vagy lejárt 10 másodperc: −1 pont, ha van levonható pont. Nulla pontnál nincs további büntetés.</li>\n<li>Az Új kártya gomb bármikor használható, ha van még lap a pakliban.</li>\n<li>A játék akkor ér véget, ha elfogyott a pakli és a kint lévő lapok között nincs több SET.</li>\n</ul>\n\n<h3>Csoportos játék</h3>\n<ul>\n<li>Minden játékos ugyanazt az asztalt látja, valós időben szinkronizálva.</li>\n<li>Új táblaállapot után 30 másodperc közös gondolkodási idő indul.</li>\n<li>Ezután új kártya csak akkor tehető ki, ha senki sem kér további gondolkodási időt.</li>\n<li>A ✋ +30 mp gombbal 30 másodperc további idő kérhető; a kéz automatikusan lejár, vagy korábban levehető.</li>\n<li>A SET! bemondását a host hitelesíti: egyszerre csak egy játékos kap SET-jogot. A jog kiosztása és minden kártyakijelölés a P2P DataChannelen a hoston keresztül történik. Ezután 3 másodpercen belül el kell kezdeni a kijelölést, és 10 másodpercen belül be kell fejezni. A többiek valós időben látják, ki mondta a SET-et, mely lapokat jelöli és mennyi ideje maradt.</li>\n<li>Hibás SET vagy lejárt idő: −1 pont. Ha nincs levonható pont, a játékos a következő körből kimarad. Helyes SET után a három megtalált lap azonnal lekerül, de a helyük üresen marad: a többi lap nem rendeződik át és új lap még nem kerül ki. Ugyanaz a játékos 3 másodperc elsőbbséget kap a következő SET elkezdésére a megmaradt lapok között; ha ezalatt kijelöli az első lapot, 10 másodperce van befejezni. Helyes találattal a sorozat folytatható. Amikor a privilégium lejár, vagy a következő próbálkozás hibás/időtúllépéses, az összes üres helyet egyszerre, automatikusan töltjük fel a pakliból, majd új 30 másodperces közös gondolkodási idő indul. Az Új kártya gomb ezután valódi plusz lapot tesz ki; SET után maradt lyukat soha nem egyenként tölt.</li>\n<li>A kimaradó játékos a következő körben nem mondhat SET-et, nem kérhet gondolkodási időt és nem rakhat ki új lapot.</li>\n<li>Megfigyelő láthatja az asztalt és az eredményeket, de nem játszik aktívan.</li>\n</ul>\n\n<h3>Asztalok és meghívás</h3>\n<ul>\n<li>Az asztal URL-je Jitsi-szerű: <code>/asztal-neve</code>.</li>\n<li>Példa: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Ha az asztal létezik, a link megnyitásakor csatlakozol hozzá. Ha nem létezik, az első belépő létrehozza.</li>\n<li>A Meghívás gomb egy háromszavas nevet ajánl fel. A javasolt név szabadon átírható.</li>\n<li>A program ellenőrzi, hogy az asztalnév szabad-e.</li>\n<li>Single játékból meghíváskor az aktuális játékállapot kerül át multiplayer módba; a parti nem indul újra.</li>\n</ul>\n\n<h3>Host és új játék</h3>\n<ul>\n<li>Az első aktív játékos lesz a host.</li>\n<li>Multiplayerben normál esetben a host indíthat új játékot.</li>\n<li>Ha a host már nincs jelen, más aktív játékos átveheti a host szerepet.</li>\n<li>Új játék indításakor a pontok nullázódnak és új pakli készül.</li>\n</ul>\n\n<h3>Eredmények és asztal megszűnése</h3>\n<ul>\n<li>Játék végén az eredmények JSON fájlba letölthetők.</li>\n<li>A host az asztalt kézzel is lezárhatja és törölheti.</li>\n<li>Soha el nem kezdett asztal 24 óra után automatikusan törlődik.</li>\n<li>Már használt asztal 7 nap játék-inaktivitás után automatikusan törlődik.</li>\n<li>Törlés után ugyanaz az asztalnév és URL azonnal újra használható.</li>\n</ul>", "en": "<h3>Basic rule</h3>\n<ul>\n<li>A SET consists of three cards.</li>\n<li>The four properties are number, shape, color and fill.</li>\n<li>For every property, the three values must be either all the same or all different.</li>\n</ul>\n\n<h3>Solo game</h3>\n<ul>\n<li>Solo mode runs entirely in the browser and does not use Supabase.</li>\n<li>After pressing SET!, you have 10 seconds to select three cards.</li>\n<li>Correct SET: +1 point.</li>\n<li>Wrong SET or 10-second timeout: −1 point if possible. At zero points there is no extra penalty.</li>\n<li>New card can be used immediately while cards remain in the deck.</li>\n<li>The game ends when the deck is empty and there is no SET left on the table.</li>\n</ul>\n\n<h3>Multiplayer game</h3>\n<ul>\n<li>All players see the same table, synchronized in real time.</li>\n<li>After a new table state, there is a shared 30-second thinking period.</li>\n<li>After that, a new card may be added only if nobody is still requesting thinking time.</li>\n<li>✋ +30 s requests another 30 seconds. The hand expires automatically or can be lowered early.</li>\n<li>SET! is authorized by the host: only one player can own the SET claim at a time. Claim ownership and every card selection are ordered by the host over the P2P DataChannel. Selection must then start within 3 seconds and finish within 10 seconds. Everyone else sees in real time who called SET, which cards are selected and how much time remains.</li>\n<li>Wrong SET or timeout: −1 point. If there is no point to deduct, the player sits out the next round. After a correct SET, the three matched cards disappear immediately but their slots stay empty: the remaining cards do not move and no replacements are dealt yet. The same player gets 3 seconds of priority to start another SET among the remaining cards; selecting the first card in time gives up to 10 seconds to finish it. A correct find can continue the streak. When priority expires, or the next attempt is wrong/times out, all empty slots are refilled automatically from the deck in one step and a new 30-second shared thinking period starts. The New card button then adds a true extra card; it never fills leftover SET holes one by one.</li>\n<li>A player sitting out cannot call SET, request thinking time or add a new card during that round.</li>\n<li>An observer can watch the table and scores but cannot actively play.</li>\n</ul>\n\n<h3>Tables and invitations</h3>\n<ul>\n<li>Table URLs use a Jitsi-style path: <code>/table-name</code>.</li>\n<li>Example: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>If the table exists, opening the link joins it. If it does not exist, the first player creates it.</li>\n<li>The Invite button suggests a three-word name. You can freely edit the suggestion.</li>\n<li>The app checks that the chosen table name is available.</li>\n<li>Inviting from a solo game promotes the current game state to multiplayer; the game does not restart.</li>\n</ul>\n\n<h3>Host and new games</h3>\n<ul>\n<li>The first active player becomes the host.</li>\n<li>Normally only the host can start a new multiplayer game.</li>\n<li>If the host is no longer present, another active player can take over.</li>\n<li>Starting a new game resets scores and creates a fresh deck.</li>\n</ul>\n\n<h3>Results and table expiry</h3>\n<ul>\n<li>At game end, results can be downloaded as JSON.</li>\n<li>The host can manually close and delete the table.</li>\n<li>A table that was never played is deleted automatically after 24 hours.</li>\n<li>A table that has been played is deleted after 7 days without game activity.</li>\n<li>After deletion, the same table name and URL can be reused immediately.</li>\n</ul>", "de": "<h3>Grundregel</h3>\n<ul>\n<li>Ein SET besteht aus drei Karten.</li>\n<li>Die vier Eigenschaften sind Anzahl, Form, Farbe und Füllung.</li>\n<li>Bei jeder Eigenschaft müssen die drei Werte entweder alle gleich oder alle verschieden sein.</li>\n</ul>\n\n<h3>Einzelspiel</h3>\n<ul>\n<li>Der Einzelspielermodus läuft vollständig im Browser und verwendet Supabase nicht.</li>\n<li>Nach SET! bleiben 10 Sekunden, um drei Karten auszuwählen.</li>\n<li>Richtiges SET: +1 Punkt.</li>\n<li>Falsches SET oder Ablauf der 10 Sekunden: −1 Punkt, falls möglich. Bei null Punkten gibt es keine weitere Strafe.</li>\n<li>Eine neue Karte kann sofort gelegt werden, solange Karten im Stapel vorhanden sind.</li>\n<li>Das Spiel endet, wenn der Stapel leer ist und kein SET mehr auf dem Tisch liegt.</li>\n</ul>\n\n<h3>Mehrspielermodus</h3>\n<ul>\n<li>Alle Spieler sehen denselben Tisch, in Echtzeit synchronisiert.</li>\n<li>Nach einem neuen Tischzustand beginnt eine gemeinsame Denkzeit von 30 Sekunden.</li>\n<li>Danach darf nur dann eine neue Karte gelegt werden, wenn niemand weitere Denkzeit angefordert hat.</li>\n<li>✋ +30 s fordert weitere 30 Sekunden an. Die Hand läuft automatisch ab oder kann vorher gesenkt werden.</li>\n<li>SET! wird vom Host autorisiert: Es kann immer nur ein Spieler das SET-Recht besitzen. Anspruch und jede Kartenauswahl werden über den P2P-DataChannel vom Host geordnet. Danach muss innerhalb von 3 Sekunden mit der Auswahl begonnen und innerhalb von 10 Sekunden abgeschlossen werden. Alle anderen sehen in Echtzeit, wer SET gerufen hat, welche Karten gewählt werden und wie viel Zeit noch bleibt.</li>\n<li>Falsches SET oder Zeitüberschreitung: −1 Punkt. Gibt es keinen Punkt zum Abziehen, setzt der Spieler die nächste Runde aus. Nach einem richtigen SET verschwinden die drei gefundenen Karten sofort, ihre Plätze bleiben jedoch leer: Die übrigen Karten werden nicht verschoben und es werden noch keine Ersatzkarten gelegt. Derselbe Spieler hat 3 Sekunden Vorrang, unter den verbleibenden Karten ein weiteres SET zu beginnen; wird die erste Karte rechtzeitig gewählt, bleiben bis zu 10 Sekunden zum Beenden. Bei einem weiteren richtigen SET kann die Serie fortgesetzt werden. Läuft der Vorrang ab oder ist der nächste Versuch falsch/zu spät, werden alle leeren Plätze in einem Schritt automatisch aus dem Stapel aufgefüllt; danach beginnt eine neue gemeinsame Denkzeit von 30 Sekunden. Die Schaltfläche Neue Karte legt anschließend eine echte Zusatzkarte aus und füllt niemals einzelne verbliebene SET-Lücken.</li>\n<li>Wer aussetzt, darf in dieser Runde kein SET ansagen, keine Denkzeit anfordern und keine neue Karte legen.</li>\n<li>Ein Beobachter kann Tisch und Punkte sehen, aber nicht aktiv mitspielen.</li>\n</ul>\n\n<h3>Tische und Einladungen</h3>\n<ul>\n<li>Tisch-URLs verwenden einen Jitsi-ähnlichen Pfad: <code>/tisch-name</code>.</li>\n<li>Beispiel: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Existiert der Tisch, tritt man über den Link bei. Existiert er nicht, erstellt ihn der erste Spieler.</li>\n<li>Die Einladen-Schaltfläche schlägt einen Namen aus drei Wörtern vor. Der Vorschlag kann frei geändert werden.</li>\n<li>Die App prüft, ob der gewählte Tischname frei ist.</li>\n<li>Wird aus einem Einzelspiel eingeladen, wird der aktuelle Spielstand in den Mehrspielermodus übernommen; die Partie startet nicht neu.</li>\n</ul>\n\n<h3>Host und neues Spiel</h3>\n<ul>\n<li>Der erste aktive Spieler wird Host.</li>\n<li>Normalerweise kann nur der Host ein neues Mehrspielerspiel starten.</li>\n<li>Ist der Host nicht mehr anwesend, kann ein anderer aktiver Spieler übernehmen.</li>\n<li>Bei einem neuen Spiel werden die Punkte zurückgesetzt und ein neuer Stapel erstellt.</li>\n</ul>\n\n<h3>Ergebnisse und Ablauf von Tischen</h3>\n<ul>\n<li>Am Spielende können die Ergebnisse als JSON heruntergeladen werden.</li>\n<li>Der Host kann den Tisch manuell schließen und löschen.</li>\n<li>Ein nie gestarteter Tisch wird nach 24 Stunden automatisch gelöscht.</li>\n<li>Ein benutzter Tisch wird nach 7 Tagen ohne Spielaktivität automatisch gelöscht.</li>\n<li>Nach dem Löschen kann derselbe Tischname und dieselbe URL sofort wieder verwendet werden.</li>\n</ul>"};
 
   function renderHelpContent() {
     helpContent.innerHTML = helpHtml[currentLang] || helpHtml.en;
@@ -1925,7 +1974,7 @@
             state = {lastPongAt:now, rtt:null, pending:new Map()};
             peerPingState.set(peerId, state);
           }
-          if (now - Number(state.lastPongAt || 0) > 16000) {
+          if (now - Number(state.lastPongAt || 0) > 25000) {
             try { channel.close(); } catch {}
             continue;
           }
@@ -1934,7 +1983,7 @@
           safeJsonSend(channel, {type:'ping', nonce, sent_at:now});
         }
       } else if (hostDataChannel && hostDataChannel.readyState === 'open') {
-        if (now - guestLastPongAt > 16000) {
+        if (now - guestLastPongAt > 25000) {
           try { hostDataChannel.close(); } catch {}
           triggerHostRecovery();
           return;
@@ -1948,6 +1997,7 @@
 
   async function triggerHostRecovery() {
     if (migrationInProgress || gameMode !== 'table' || isHostClient) return;
+    diag('HOST_RECOVERY', 'started');
     migrationInProgress = true;
     message.textContent = t('hostMigrating');
     renderConnectionQuality();
@@ -1973,7 +2023,67 @@
     periodicCheckpointTimer = null;
   }
 
+  const diagnosticLog = [];
+  const MAX_DIAGNOSTIC_EVENTS = 500;
+  let diagDragState = null;
+
+  function diag(event, detail = '') {
+    const row = {
+      ts: new Date().toISOString(),
+      event: String(event),
+      detail: typeof detail === 'string' ? detail : JSON.stringify(detail)
+    };
+    diagnosticLog.push(row);
+    if (diagnosticLog.length > MAX_DIAGNOSTIC_EVENTS) diagnosticLog.shift();
+    renderDiagnostics();
+  }
+
+  function diagText() {
+    return diagnosticLog.map(x => `${x.ts}  ${x.event.padEnd(20)} ${x.detail}`).join('\n');
+  }
+
+  function renderDiagnostics() {
+    if (!diagLogEl) return;
+    diagLogEl.textContent = diagText() || 'No diagnostic events yet.';
+    if (diagSummaryEl) {
+      const pc = hostPeer?.connectionState || (isHostClient ? 'host' : '—');
+      const ice = hostPeer?.iceConnectionState || '—';
+      const dc = hostDataChannel?.readyState || (isHostClient ? `${dataChannels.size} peer(s)` : '—');
+      diagSummaryEl.textContent = `PC ${pc} · ICE ${ice} · DC ${dc}`;
+    }
+    if (!diagPanel.classList.contains('hidden')) diagLogEl.scrollTop = diagLogEl.scrollHeight;
+  }
+
+  function openDiagnostics() {
+    diagPanel.classList.remove('hidden');
+    diag('DIAG_OPEN', navigator.onLine ? 'online' : 'offline');
+    renderDiagnostics();
+  }
+  function closeDiagnostics() { diagPanel.classList.add('hidden'); }
+
+  function startDiagDrag(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (e.target.closest('button')) return;
+    const r=diagPanel.getBoundingClientRect();
+    diagDragState={id:e.pointerId, dx:e.clientX-r.left, dy:e.clientY-r.top};
+    diagDragHandle.setPointerCapture?.(e.pointerId); e.preventDefault();
+  }
+  function moveDiagDrag(e) {
+    if (!diagDragState || e.pointerId!==diagDragState.id) return;
+    const r=diagPanel.getBoundingClientRect(), m=8;
+    const left=Math.min(Math.max(m,e.clientX-diagDragState.dx),Math.max(m,innerWidth-r.width-m));
+    const top=Math.min(Math.max(m,e.clientY-diagDragState.dy),Math.max(m,innerHeight-r.height-m));
+    diagPanel.style.left=left+'px'; diagPanel.style.top=top+'px';
+    e.preventDefault();
+  }
+  function endDiagDrag(e) {
+    if (!diagDragState || e.pointerId!==diagDragState.id) return;
+    try{diagDragHandle.releasePointerCapture?.(e.pointerId)}catch{}
+    diagDragState=null; e.preventDefault();
+  }
+
   function setP2PPhase(phase) {
+    if (p2pPhase !== phase) diag('P2P_PHASE', `${p2pPhase} -> ${phase}`);
     p2pPhase = phase;
     if (!p2pPhaseEl) return;
 
@@ -2026,6 +2136,47 @@
     }, 7000);
   }
 
+  function clearGuestDisconnectGraceTimer() {
+    if (guestDisconnectGraceTimer) clearTimeout(guestDisconnectGraceTimer);
+    guestDisconnectGraceTimer = null;
+  }
+
+  function scheduleGuestDisconnectGrace(reason = '') {
+    if (isHostClient || gameMode !== 'table' || migrationInProgress) return;
+    diag('DISCONNECT_GRACE', `${reason} (${DISCONNECT_GRACE_MS}ms)`);
+    if (guestDisconnectGraceTimer) return;
+
+    // WebRTC often enters "disconnected" very briefly on mobile when the radio
+    // changes state or the browser switches network paths. Do not tear down a
+    // healthy connection immediately.
+    guestDisconnectGraceTimer = setTimeout(() => {
+      guestDisconnectGraceTimer = null;
+
+      const dcOpen = hostDataChannel?.readyState === 'open';
+      const pcState = hostPeer?.connectionState;
+      const iceState = hostPeer?.iceConnectionState;
+
+      if (
+        dcOpen &&
+        (pcState === 'connected' || ['connected','completed'].includes(iceState))
+      ) {
+        p2pConnected = true;
+        setConnectionStatus('online');
+        setP2PPhase('active');
+        renderConnectionQuality();
+        renderChatStatus();
+        return;
+      }
+
+      p2pConnected = false;
+      setConnectionStatus('error');
+      setP2PPhase('failed');
+      renderConnectionQuality();
+      renderChatStatus();
+      scheduleGuestReconnect(reason || 'disconnect-grace-expired');
+    }, DISCONNECT_GRACE_MS);
+  }
+
   function clearGuestReconnectTimer() {
     if (guestReconnectTimer) clearTimeout(guestReconnectTimer);
     guestReconnectTimer = null;
@@ -2033,6 +2184,7 @@
 
   function scheduleGuestReconnect(reason = '') {
     if (isHostClient || gameMode !== 'table' || migrationInProgress) return;
+    diag('RECONNECT_SCHEDULE', reason);
     clearGuestReconnectTimer();
 
     const delay = Math.min(12000, 1200 * Math.max(1, guestConnectAttempts + 1));
@@ -2167,6 +2319,7 @@
   }
 
   async function insertSignal(toClient, kind, payload) {
+    diag('SIGNAL_TX', `${kind} to=${toClient ? String(toClient).slice(0,8) : '*'}`);
     const { error } = await db.from('rtc_signals').insert({
       room_name: roomName,
       from_client: clientId,
@@ -2243,8 +2396,11 @@
     hostDataChannel = channel;
 
     channel.onopen = () => {
+      diag('DATACHANNEL', 'open');
       p2pConnected = true;
       guestConnectAttempts = 0;
+      clearGuestDisconnectGraceTimer();
+      clearGuestReconnectTimer();
       guestLastPongAt = Date.now();
       setConnectionStatus('online');
       setP2PPhase('active');
@@ -2262,7 +2418,6 @@
           last_activity: Date.now(),
           thinking_until: 0,
           round_token: roomState?.next_card_allowed_at || null,
-          ...emptyClaimPatch()
         }
       });
 
@@ -2284,6 +2439,9 @@
     };
 
     channel.onclose = () => {
+      diag('DATACHANNEL', 'closed');
+      clearGuestDisconnectGraceTimer();
+      if (!p2pConnected && guestReconnectTimer) return;
       p2pConnected = false;
       setConnectionStatus('error');
       setP2PPhase('failed');
@@ -2313,6 +2471,16 @@
       }
       return;
     }
+    if (msg.type === 'set_claim_request') {
+      hostGrantSetClaim(peerId);
+      return;
+    }
+
+    if (msg.type === 'set_select_card') {
+      hostSelectCard(peerId, msg.card_id);
+      return;
+    }
+
     if (msg.type === 'chat') {
       const clean = {
         type:'chat',
@@ -2352,7 +2520,8 @@
         type: 'snapshot',
         state: roomState,
         presence: snapshotPresenceForWire(),
-        host_client_id: clientId
+        host_client_id: clientId,
+        set_claim: hostSetClaim
       });
       broadcastPresenceSnapshot();
       broadcastGameState();
@@ -2431,6 +2600,7 @@
       guestLastPongAt = Date.now();
       if (Number.isFinite(Number(msg.sent_at))) {
         guestRttMs = Math.max(0, Date.now() - Number(msg.sent_at));
+        diag('PONG_RTT', `${guestRttMs} ms`);
       }
       renderConnectionQuality();
       return;
@@ -2440,9 +2610,16 @@
       return;
     }
 
+    if (msg.type === 'set_claim_state') {
+      diag('SET_CLAIM_STATE', msg.claim ? `${msg.claim.state} ${msg.claim.name} selected=${(msg.claim.selected||[]).length}` : 'clear');
+      setHostClaim(msg.claim || null, false);
+      return;
+    }
+
     if (msg.type === 'snapshot') {
       roomState = msg.state || roomState;
       hostClientId = msg.host_client_id || hostClientId;
+      setHostClaim(msg.set_claim || null, false);
       const map = new Map();
       for (const p of msg.presence || []) {
         if (p?.client_id) map.set(p.client_id, p);
@@ -2532,6 +2709,7 @@
     if (row.id) processedSignalIds.add(row.id);
 
     try {
+      diag('SIGNAL_RX', `${row.kind} from=${String(row.from_client).slice(0,8)} to=${row.to_client ? String(row.to_client).slice(0,8) : '*'}`);
       if (isHostClient) {
         if (row.kind === 'offer') {
           setP2PPhase('signaling');
@@ -2584,6 +2762,7 @@
     hostClientId = clientId;
     p2pStarted = true;
     p2pConnected = true;
+    hostSetClaim = null;
     setP2PPhase('signaling');
 
     myPresence = {
@@ -2593,7 +2772,6 @@
       last_activity: Date.now(),
       thinking_until: 0,
       round_token: roomState?.next_card_allowed_at || null,
-      ...emptyClaimPatch()
     };
     presenceMap.set(clientId, myPresence);
 
@@ -2611,6 +2789,7 @@
     isHostClient = false;
     p2pStarted = true;
     p2pConnected = false;
+    hostSetClaim = null;
     setConnectionStatus('connecting');
     setP2PPhase('signaling');
 
@@ -2638,32 +2817,74 @@
 
     hostPeer.oniceconnectionstatechange = () => {
       const state = hostPeer?.iceConnectionState;
-      if (['new','checking'].includes(state)) setP2PPhase('ice');
+      diag('ICE_STATE', state || '—');
+
       if (['connected','completed'].includes(state)) {
-        setP2PPhase(hostDataChannel?.readyState === 'open' ? 'active' : 'ice');
+        clearGuestDisconnectGraceTimer();
+        clearGuestReconnectTimer();
+        p2pConnected = hostDataChannel?.readyState === 'open';
+        if (p2pConnected) setConnectionStatus('online');
+        setP2PPhase(p2pConnected ? 'active' : 'ice');
         maybeReleaseGuestSignaling();
+        renderConnectionQuality();
+        renderChatStatus();
+        return;
       }
-      if (['failed'].includes(state)) {
+
+      if (state === 'failed') {
+        clearGuestDisconnectGraceTimer();
+        p2pConnected = false;
+        setConnectionStatus('error');
         setP2PPhase('failed');
+        renderConnectionQuality();
+        renderChatStatus();
         scheduleGuestReconnect(`ice-${state}`);
+        return;
+      }
+
+      if (state === 'disconnected') {
+        // Keep the current visible "connected" state during the grace window.
+        scheduleGuestDisconnectGrace(`ice-${state}`);
+        return;
+      }
+
+      // "new" and "checking" are only startup states. Never downgrade an already
+      // open DataChannel to "connecting", which caused the visible flicker.
+      if (!p2pConnected && ['new','checking'].includes(state)) {
+        setP2PPhase('ice');
       }
     };
 
     hostPeer.onconnectionstatechange = () => {
       const state = hostPeer?.connectionState;
+      diag('PC_STATE', state || '—');
+
       if (state === 'connected') {
-        setP2PPhase(hostDataChannel?.readyState === 'open' ? 'active' : 'ice');
+        clearGuestDisconnectGraceTimer();
+        clearGuestReconnectTimer();
+        p2pConnected = hostDataChannel?.readyState === 'open';
+        if (p2pConnected) setConnectionStatus('online');
+        setP2PPhase(p2pConnected ? 'active' : 'ice');
         maybeReleaseGuestSignaling();
-      } else if (state === 'failed') {
+        renderConnectionQuality();
+        renderChatStatus();
+        return;
+      }
+
+      if (state === 'failed' || state === 'closed') {
+        clearGuestDisconnectGraceTimer();
         p2pConnected = false;
         setConnectionStatus('error');
         setP2PPhase('failed');
+        renderConnectionQuality();
+        renderChatStatus();
         scheduleGuestReconnect(`pc-${state}`);
-      } else if (state === 'disconnected') {
-        p2pConnected = false;
-        setConnectionStatus('connecting');
-        setP2PPhase('retry');
-        scheduleGuestReconnect(`pc-${state}`);
+        return;
+      }
+
+      if (state === 'disconnected') {
+        // Transient on iOS/mobile networks. Do not touch the visible status yet.
+        scheduleGuestDisconnectGrace(`pc-${state}`);
       }
     };
 
@@ -2721,6 +2942,7 @@
     stopPingLoop();
     clearSignalingReleaseTimer();
     clearGuestReconnectTimer();
+    clearGuestDisconnectGraceTimer();
     processedSignalIds.clear();
     peerPingState.clear();
     guestRttMs = null;
@@ -2799,6 +3021,7 @@
           roomState.host_client_id = clientId;
           roomState.host_name = playerName;
         }
+        hostSetClaim = null;
         await closeP2P();
         await startHostP2P();
         scheduleRoomCheckpoint();
@@ -2822,6 +3045,278 @@
       migrationInProgress = false;
       renderConnectionQuality();
     }
+  }
+
+  function setHostClaim(claim, broadcast = false) {
+    hostSetClaim = claim ? {...claim, selected:[...(claim.selected || [])]} : null;
+
+    if (hostSetClaim && hostSetClaim.client_id === clientId) {
+      selected = [...(hostSetClaim.selected || [])];
+      declaringSet = hostSetClaim.state === 'selecting';
+      setDeadline = Number(hostSetClaim.deadline || 0);
+    } else {
+      selected = [];
+      declaringSet = false;
+      setDeadline = 0;
+    }
+
+    if (broadcast && isHostClient) {
+      broadcastP2P({type:'set_claim_state', claim:hostSetClaim});
+    }
+    render();
+  }
+
+  function claimOwnerPresence(peerId) {
+    if (peerId === clientId) return myPresence;
+    return presenceMap.get(peerId) || null;
+  }
+
+  function hostCommitGameState(mutator) {
+    if (!isHostClient || !roomState) return null;
+    const next = mutator({
+      ...roomState,
+      cards:[...(roomState.cards || [])],
+      deck:[...(roomState.deck || [])],
+      players:{...(roomState.players || {})}
+    });
+    if (!next) return null;
+
+    roomState = {
+      ...roomState,
+      ...next,
+      host_name: playerName,
+      host_client_id: clientId,
+      version: Number(roomState.version || 0) + 1,
+      last_activity_at: new Date().toISOString()
+    };
+    scheduleRoomCheckpoint();
+    broadcastGameState();
+    render();
+    return roomState;
+  }
+
+  function hostPlayerName(peerId) {
+    const p = claimOwnerPresence(peerId);
+    return String(p?.name || (peerId === clientId ? playerName : 'Player'));
+  }
+
+  function hostCanClaim(peerId) {
+    const p = claimOwnerPresence(peerId);
+    if (!p || p.role !== 'player') return false;
+    if (isPlayerSkipped(p.name)) return false;
+    return true;
+  }
+
+  function hostGrantSetClaim(peerId) {
+    if (!isHostClient || !hostCanClaim(peerId)) return false;
+
+    const now = Date.now();
+    if (hostSetClaim) {
+      // Existing live claim always wins. If it belongs to the same player,
+      // repeated SET does not create a second claim.
+      return hostSetClaim.client_id === peerId;
+    }
+
+    setHostClaim({
+      state:'selecting',
+      client_id:peerId,
+      name:hostPlayerName(peerId),
+      selected:[],
+      started_at:now,
+      first_at:0,
+      start_deadline:now + SET_START_MS,
+      deadline:now + SET_MS,
+      priority_until:0
+    }, true);
+    diag('SET_CLAIM_GRANTED', `${hostPlayerName(peerId)} ${String(peerId).slice(0,8)}`);
+    return true;
+  }
+
+  function hostClearSetClaim() {
+    if (!isHostClient) return;
+    setHostClaim(null, true);
+  }
+
+  function hostRefillAfterStreak() {
+    if (!isHostClient || !roomState) return;
+    if (!hasHoles(roomState.cards)) {
+      hostClearSetClaim();
+      return;
+    }
+
+    const state = hostCommitGameState(state => {
+      const filled = fillHolesFromDeck(state.cards, state.deck);
+      state.cards = filled.cards;
+      state.deck = filled.deck;
+      const newToken = new Date(Date.now() + ROUND_MS).toISOString();
+      state.players = advanceRoundPenalties(state.players, newToken);
+      state.next_card_allowed_at = newToken;
+      state.meta = {added:filled.added};
+      return state;
+    });
+
+    hostClearSetClaim();
+    if (state) message.textContent = t('holesRefilled')(state.meta?.added || 0);
+  }
+
+  function hostApplySetPenalty(peerId, reason='wrong') {
+    if (!isHostClient || !roomState) return;
+    const name = hostPlayerName(peerId);
+    let meta = null;
+
+    hostCommitGameState(state => {
+      state.has_started = true;
+      const entry = normalizePlayerEntry(state.players[name]);
+      if (entry.score > 0) {
+        entry.score -= 1;
+        meta = {deducted:true, skip:false};
+      } else {
+        entry.pending_skip = true;
+        meta = {deducted:false, skip:true};
+      }
+      state.players[name] = entry;
+      return state;
+    });
+
+    diag('SET_CLAIM_FAILED', `${name} reason=${reason}`);
+    hostClearSetClaim();
+
+    if (hasHoles(roomState.cards)) hostRefillAfterStreak();
+  }
+
+  function hostResolveSelectedSet(peerId) {
+    if (!isHostClient || !hostSetClaim || hostSetClaim.client_id !== peerId) return;
+    const chosenIds = [...(hostSetClaim.selected || [])];
+    if (chosenIds.length !== 3) return;
+
+    const validCards = chosenIds.every(id => (roomState.cards || []).includes(id));
+    const chosen = chosenIds.map(cardObj);
+    if (!validCards || !isSet(...chosen)) {
+      hostApplySetPenalty(peerId, 'wrong');
+      return;
+    }
+
+    const name = hostPlayerName(peerId);
+    hostCommitGameState(state => {
+      state.has_started = true;
+      state.cards = removeCardsLeavingHoles(state.cards, chosenIds);
+      const entry = normalizePlayerEntry(state.players[name]);
+      entry.score += 1;
+      state.players[name] = entry;
+      return state;
+    });
+
+    const now = Date.now();
+    setHostClaim({
+      state:'priority',
+      client_id:peerId,
+      name,
+      selected:[],
+      started_at:now,
+      first_at:0,
+      start_deadline:0,
+      deadline:0,
+      priority_until:now + SET_PRIORITY_MS
+    }, true);
+
+    diag('SET_CORRECT', `${name} +1`);
+    if (peerId === clientId) message.textContent = t('correctPriority');
+  }
+
+  function hostSelectCard(peerId, id) {
+    if (!isHostClient || !hostSetClaim || hostSetClaim.client_id !== peerId) return;
+    if (!(roomState.cards || []).includes(id)) return;
+
+    const now = Date.now();
+
+    if (hostSetClaim.state === 'priority') {
+      if (now >= Number(hostSetClaim.priority_until || 0)) {
+        hostRefillAfterStreak();
+        return;
+      }
+      setHostClaim({
+        state:'selecting',
+        client_id:peerId,
+        name:hostPlayerName(peerId),
+        selected:[id],
+        started_at:now,
+        first_at:now,
+        start_deadline:now,
+        deadline:now + SET_MS,
+        priority_until:0
+      }, true);
+      return;
+    }
+
+    if (hostSetClaim.state !== 'selecting') return;
+    if (!hostSetClaim.first_at && now >= Number(hostSetClaim.start_deadline || 0)) {
+      hostApplySetPenalty(peerId, 'startTimeout');
+      return;
+    }
+    if (hostSetClaim.first_at && now >= Number(hostSetClaim.deadline || 0)) {
+      hostApplySetPenalty(peerId, 'timeout');
+      return;
+    }
+
+    const picked = [...(hostSetClaim.selected || [])];
+    const idx = picked.indexOf(id);
+    if (idx >= 0) picked.splice(idx,1);
+    else if (picked.length < 3) picked.push(id);
+
+    const firstAt = picked.length > 0
+      ? (Number(hostSetClaim.first_at || 0) || now)
+      : 0;
+
+    setHostClaim({
+      ...hostSetClaim,
+      selected:picked,
+      first_at:firstAt
+    }, true);
+
+    if (picked.length === 3) hostResolveSelectedSet(peerId);
+  }
+
+  function hostProcessSetTimers() {
+    if (!isHostClient || !hostSetClaim) return;
+    const now = Date.now();
+
+    if (hostSetClaim.state === 'priority') {
+      if (now >= Number(hostSetClaim.priority_until || 0)) hostRefillAfterStreak();
+      return;
+    }
+
+    if (hostSetClaim.state === 'selecting') {
+      const selectedCount = (hostSetClaim.selected || []).length;
+      if (selectedCount === 0 && now >= Number(hostSetClaim.start_deadline || 0)) {
+        hostApplySetPenalty(hostSetClaim.client_id, 'startTimeout');
+      } else if (selectedCount > 0 && now >= Number(hostSetClaim.deadline || 0)) {
+        hostApplySetPenalty(hostSetClaim.client_id, 'timeout');
+      }
+    }
+  }
+
+  function requestHostSetClaim() {
+    if (isHostClient) {
+      hostGrantSetClaim(clientId);
+      return;
+    }
+    if (!hostDataChannel || hostDataChannel.readyState !== 'open') {
+      message.textContent = t('chatDisconnected');
+      return;
+    }
+    safeJsonSend(hostDataChannel, {type:'set_claim_request'});
+  }
+
+  function requestHostCardSelection(id) {
+    if (isHostClient) {
+      hostSelectCard(clientId, id);
+      return;
+    }
+    if (!hostDataChannel || hostDataChannel.readyState !== 'open') {
+      message.textContent = t('chatDisconnected');
+      return;
+    }
+    safeJsonSend(hostDataChannel, {type:'set_select_card', card_id:id});
   }
 
   function emptyClaimPatch() {
@@ -2849,46 +3344,16 @@
   }
 
   function localClaimForTimer() {
-    const p = myPresence;
-    if (!p || !p.claim_state) return null;
-
-    if (p.claim_state === 'priority') {
-      return {
-        state: 'priority',
-        priority_until: Number(p.claim_priority_until || 0)
-      };
-    }
-
-    if (p.claim_state === 'selecting') {
-      const selected = Array.isArray(p.claim_selected) ? p.claim_selected : [];
-      const started = Number(p.claim_started_at || 0);
-      return {
-        state: 'selecting',
-        selected,
-        start_deadline: started + SET_START_MS,
-        deadline: Number(p.claim_deadline || 0)
-      };
-    }
-
-    return null;
+    return hostSetClaim;
   }
 
   function currentLiveClaim() {
-    const claims=visiblePresenceEntries().map(claimFromPresence).filter(Boolean);
-    if (!claims.length) return null;
-    claims.sort((a,b)=>{
-      if (a.state==='priority' && b.state!=='priority') return -1;
-      if (b.state==='priority' && a.state!=='priority') return 1;
-      const ta=a.state==='priority'?a.priority_until:a.started_at;
-      const tb=b.state==='priority'?b.priority_until:b.started_at;
-      return ta!==tb?ta-tb:String(a.client_id).localeCompare(String(b.client_id));
-    });
-    return claims[0];
+    return hostSetClaim;
   }
 
   async function clearClaimPresence() {
-    if (gameMode!=='table') return;
-    await updatePresence(emptyClaimPatch());
+    if (gameMode !== 'table') return;
+    if (isHostClient) hostClearSetClaim();
   }
 
   function renderLiveClaim() {
@@ -3499,26 +3964,22 @@
       last_activity: Date.now(),
       thinking_until: myPresence?.thinking_until || 0,
       round_token: roomState?.next_card_allowed_at || null,
-      claim_state: myPresence?.claim_state || null,
-      claim_started_at: Number(myPresence?.claim_started_at || 0),
-      claim_first_at: Number(myPresence?.claim_first_at || 0),
-      claim_deadline: Number(myPresence?.claim_deadline || 0),
-      claim_priority_until: Number(myPresence?.claim_priority_until || 0),
-      claim_selected: Array.isArray(myPresence?.claim_selected) ? myPresence.claim_selected : [],
       ...extra
     };
+
+    // SET claim state is deliberately NOT stored in Presence anymore.
+    delete myPresence.claim_state;
+    delete myPresence.claim_started_at;
+    delete myPresence.claim_first_at;
+    delete myPresence.claim_deadline;
+    delete myPresence.claim_priority_until;
+    delete myPresence.claim_selected;
 
     presenceMap.set(clientId, myPresence);
 
     if (gameMode === 'table') {
-      if (isHostClient) {
-        broadcastPresenceSnapshot();
-      } else {
-        safeJsonSend(hostDataChannel, {
-          type: 'presence_update',
-          presence: myPresence
-        });
-      }
+      if (isHostClient) broadcastPresenceSnapshot();
+      else safeJsonSend(hostDataChannel, {type:'presence_update', presence:myPresence});
     }
     render();
   }
@@ -3867,25 +4328,17 @@
   }
 
   async function selectCardMultiplayer(id) {
-    const claim=currentLiveClaim();
-    if (claim && claim.client_id!==clientId) { message.textContent=t('liveSetBusy')(claim.name); return; }
-
-    if (claim && claim.client_id===clientId && claim.state==='priority') {
-      const now=Date.now();
-      if (now>=claim.priority_until) { await clearClaimPresence(); render(); return; }
-      selected=[id]; declaringSet=true; setDeadline=now+SET_MS;
-      await updatePresence({claim_state:'selecting',claim_started_at:now,claim_first_at:now,claim_deadline:setDeadline,claim_priority_until:0,claim_selected:[...selected]});
-      message.textContent=t('chooseMore')(2); return;
+    const claim = currentLiveClaim();
+    if (!claim) {
+      message.textContent = t('firstSet');
+      return;
+    }
+    if (claim.client_id !== clientId) {
+      message.textContent = t('liveSetBusy')(claim.name);
+      return;
     }
 
-    if (!claim || claim.client_id!==clientId || claim.state!=='selecting') { message.textContent=t('firstSet'); return; }
-    const idx=selected.indexOf(id);
-    if (idx>=0) selected.splice(idx,1); else if (selected.length<3) selected.push(id);
-    const now=Date.now();
-    let firstAt=Number(myPresence?.claim_first_at||0), deadline=Number(myPresence?.claim_deadline||0);
-    if (selected.length>0 && !firstAt) { firstAt=now; deadline=Number(myPresence?.claim_started_at||now)+SET_MS; setDeadline=deadline; }
-    await updatePresence({claim_state:'selecting',claim_first_at:firstAt,claim_deadline:deadline,claim_selected:[...selected]});
-    if (selected.length===3) await submitSet([...selected]); else message.textContent=t('chooseMore')(3-selected.length);
+    requestHostCardSelection(id);
   }
 
   function selectCard(id) {
@@ -3919,40 +4372,9 @@
   }
 
   async function finishSetStreak() {
-    if (finishingSetStreak) return;
-    finishingSetStreak = true;
-
-    try {
-      if (gameMode !== 'table' || !roomState || !hasHoles(roomState.cards)) {
-        await clearClaimPresence();
-        clearLocalSetState();
-        render();
-        return;
-      }
-
-      const result = await optimisticUpdate(state => {
-        // Refill every hole in one atomic game-state transition. Remaining cards
-        // keep their original positions. No extra card is appended here.
-        const filled = fillHolesFromDeck(state.cards, state.deck);
-        state.cards = filled.cards;
-        state.deck = filled.deck;
-        const newToken = new Date(Date.now() + ROUND_MS).toISOString();
-        state.players = advanceRoundPenalties(state.players, newToken);
-        state.next_card_allowed_at = newToken;
-        state.meta = { added: filled.added };
-        return state;
-      });
-
-      await clearClaimPresence();
-      clearLocalSetState();
-      if (!result.ok) {
-        await fetchRoom();
-      } else {
-        message.textContent = t('holesRefilled')(result.meta.added || 0);
-      }
-      render();
-    } finally {
-      finishingSetStreak = false;
+    if (gameMode === 'table') {
+      if (isHostClient) hostRefillAfterStreak();
+      return;
     }
   }
 
@@ -3965,6 +4387,11 @@
     selected = [];
     declaringSet = false;
     setDeadline = 0;
+
+    if (gameMode === 'table') {
+      if (isHostClient && hostSetClaim) hostApplySetPenalty(hostSetClaim.client_id, reason);
+      return;
+    }
 
     try {
       if (gameMode === 'solo') {
@@ -4042,6 +4469,10 @@
       return;
     }
 
+    // Multiplayer SET validation is host-authoritative and is handled by
+    // hostResolveSelectedSet(), never by the claiming client.
+    return;
+
     const result = await optimisticUpdate(state => {
       if (!chosenIds.every(id => state.cards.includes(id))) return null;
       state.has_started = true;
@@ -4113,6 +4544,32 @@
   chatBtn.addEventListener('click', openChat);
   chatCloseBtn.addEventListener('click', closeChat);
 
+  diagBtn.addEventListener('click', openDiagnostics);
+  diagCloseBtn.addEventListener('click', closeDiagnostics);
+  diagDragHandle.addEventListener('pointerdown', startDiagDrag);
+  diagDragHandle.addEventListener('pointermove', moveDiagDrag);
+  diagDragHandle.addEventListener('pointerup', endDiagDrag);
+  diagDragHandle.addEventListener('pointercancel', endDiagDrag);
+  diagCopyBtn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(diagText()); diag('LOG_COPY', 'ok'); }
+    catch (e) { diag('LOG_COPY', `failed: ${e.message}`); }
+  });
+  diagDownloadBtn.addEventListener('click', () => {
+    const blob=new Blob([diagText()],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`set-p2p-diagnostic-${new Date().toISOString().replace(/[:.]/g,'-')}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    diag('LOG_DOWNLOAD','ok');
+  });
+  diagClearBtn.addEventListener('click', () => { diagnosticLog.length=0; renderDiagnostics(); });
+
+  window.addEventListener('online', () => diag('NETWORK', 'online'));
+  window.addEventListener('offline', () => diag('NETWORK', 'offline'));
+  document.addEventListener('visibilitychange', () => diag('VISIBILITY', document.visibilityState));
+  window.addEventListener('pageshow', e => diag('PAGESHOW', `persisted=${!!e.persisted}`));
+  window.addEventListener('pagehide', e => diag('PAGEHIDE', `persisted=${!!e.persisted}`));
+
   chatDragHandle.addEventListener('pointerdown', startChatDrag);
   chatDragHandle.addEventListener('pointermove', moveChatDrag);
   chatDragHandle.addEventListener('pointerup', endChatDrag);
@@ -4142,12 +4599,22 @@
     if (isPlayerSkipped(playerName)) { message.textContent=t('skippedRound'); return; }
 
     if (gameMode==='table') {
-      const liveClaim=currentLiveClaim();
-      if (liveClaim && liveClaim.client_id!==clientId) { message.textContent=t('liveSetBusy')(liveClaim.name); return; }
-      if (liveClaim && liveClaim.client_id===clientId) { if (liveClaim.state==='selecting') await failSetCall('wrong'); return; }
-      const now=Date.now(); selected=[]; declaringSet=true; setDeadline=now+SET_MS;
-      await updatePresence({claim_state:'selecting',claim_started_at:now,claim_first_at:0,claim_deadline:setDeadline,claim_priority_until:0,claim_selected:[]});
-      message.textContent=t('setDeclared'); return;
+      const liveClaim = currentLiveClaim();
+      if (liveClaim && liveClaim.client_id !== clientId) {
+        message.textContent = t('liveSetBusy')(liveClaim.name);
+        return;
+      }
+      if (liveClaim && liveClaim.client_id === clientId) {
+        message.textContent = t('setDeclared');
+        return;
+      }
+
+      selected = [];
+      declaringSet = true;
+      setDeadline = Date.now() + SET_MS;
+      requestHostSetClaim();
+      message.textContent = t('setDeclared');
+      return;
     }
 
     if (declaringSet) { await failSetCall('wrong'); return; }
@@ -4236,23 +4703,8 @@
         }
       }
 
-      if (gameMode === 'table') {
-        // Do NOT use currentLiveClaim() here: it intentionally hides expired
-        // claims, exactly when the expiry action must be executed.
-        const claim = localClaimForTimer();
-        if (claim && !setPenaltyRunning && !finishingSetStreak) {
-          if (claim.state === 'priority' && claim.priority_until > 0 && Date.now() >= claim.priority_until) {
-            finishSetStreak();
-          } else if (claim.state === 'selecting') {
-            if (claim.selected.length === 0 && claim.start_deadline > 0 && Date.now() >= claim.start_deadline) {
-              failSetCall('startTimeout');
-            } else if (claim.selected.length > 0 && claim.deadline > 0 && Date.now() >= claim.deadline) {
-              failSetCall('timeout');
-            }
-          }
-        }
-      } else if (declaringSet && setDeadline > 0 && Date.now() >= setDeadline && !setPenaltyRunning) {
-        failSetCall('timeout');
+      if (gameMode === 'table' && isHostClient) {
+        hostProcessSetTimers();
       }
 
       renderTimers();
@@ -4303,6 +4755,7 @@
 
   applyLanguage();
   renderHelpContent();
+  diag('SESSION_START', `online=${navigator.onLine} visibility=${document.visibilityState} ua=${navigator.userAgent}`);
   setP2PPhase('idle');
   renderChat();
   renderChatStatus();
