@@ -251,6 +251,62 @@
     .error-text { color: var(--bad); font-size: 14px; min-height: 20px; }
     .join-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
+    .chat-icon-btn {
+      position: relative;
+      width: 44px;
+      min-width: 44px;
+      padding: 0;
+      font-size: 18px;
+    }
+    .chat-unread {
+      position: absolute; top: -7px; right: -7px;
+      min-width: 19px; height: 19px; padding: 1px 5px;
+      border-radius: 999px; background: var(--bad); color: white;
+      font-size: 11px; line-height: 17px; text-align: center;
+    }
+    .chat-panel {
+      position: fixed; z-index: 950;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(12px, env(safe-area-inset-bottom));
+      width: min(380px, calc(100vw - 24px));
+      height: min(520px, calc(100vh - 80px));
+      display: flex; flex-direction: column;
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--panel); box-shadow: 0 18px 50px rgba(0,0,0,.24);
+      overflow: hidden;
+    }
+    .chat-header {
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; padding:10px 12px; border-bottom:1px solid var(--border);
+    }
+    .chat-close-btn {
+      width:36px; min-width:36px; height:36px; min-height:36px;
+      padding:0; font-size:23px; line-height:1;
+    }
+    .chat-messages {
+      flex:1; min-height:0; overflow-y:auto; padding:10px 12px;
+      display:flex; flex-direction:column; gap:8px;
+    }
+    .chat-empty { margin:auto; color:var(--muted); font-size:13px; text-align:center; }
+    .chat-message {
+      max-width:88%; padding:7px 9px; border:1px solid var(--border);
+      border-radius:10px; background:var(--bg); font-size:14px;
+      line-height:1.35; overflow-wrap:anywhere;
+    }
+    .chat-message.me { align-self:flex-end; border-color:var(--accent); background:var(--accent-bg); }
+    .chat-meta {
+      display:flex; gap:8px; justify-content:space-between;
+      margin-bottom:3px; color:var(--muted); font-size:11px;
+    }
+    .chat-form {
+      display:grid; grid-template-columns:1fr auto; gap:8px;
+      padding:10px; border-top:1px solid var(--border);
+    }
+    .chat-form input, .chat-form button { min-height:42px; }
+    .quality-good { color:var(--good); }
+    .quality-medium { color:var(--warn); }
+    .quality-bad { color:var(--bad); }
+
     .help-icon-btn {
       width: 44px;
       min-width: 44px;
@@ -431,6 +487,7 @@
     <div class="toolbar">
       <button id="new-card" class="primary" type="button" data-i18n="newCard">New card</button>
       <button id="has-set" type="button" data-i18n="hasSet">Any SET?</button>
+      <button id="chat-btn" class="chat-icon-btn multiplayer-only" type="button" aria-label="Chat" title="Chat">💬<span id="chat-unread" class="chat-unread hidden">0</span></button>
       <button id="help-btn" class="help-icon-btn" type="button" aria-label="Help" title="Help">?</button>
       <button id="copy-invite-btn" type="button" data-i18n="copyInvite">Invite</button>
       <button id="leave-room" type="button" data-i18n="leave">Leave</button>
@@ -471,6 +528,7 @@
 
     <div class="roomline multiplayer-only">
       <span><span id="status-dot" class="status-dot"></span><span id="connection-text">Connecting…</span></span>
+      <span><span data-i18n="connectionQuality">Connection:</span> <strong id="connection-quality">—</strong></span>
       <span><span data-i18n="table">Table:</span> <strong id="current-room"></strong></span>
       <span><span data-i18n="you">You:</span> <strong id="current-player"></strong></span>
       <span><span data-i18n="yourRole">Role:</span> <strong id="current-role"></strong></span>
@@ -538,6 +596,18 @@
     </div>
   </section>
 
+  <div id="chat-panel" class="chat-panel hidden" role="dialog" aria-labelledby="chat-title">
+    <div class="chat-header">
+      <strong id="chat-title" data-i18n="chatTitle">Table chat</strong>
+      <button id="chat-close-btn" class="chat-close-btn" type="button" aria-label="Close">×</button>
+    </div>
+    <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" maxlength="500" autocomplete="off" data-i18n-placeholder="chatPlaceholder" placeholder="Message…">
+      <button id="chat-send-btn" type="submit" data-i18n="chatSend">Send</button>
+    </form>
+  </div>
+
   <div id="help-overlay" class="help-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
     <div class="help-dialog">
       <div class="help-dialog-header">
@@ -601,6 +671,14 @@
   const currentRoleEl = document.getElementById('current-role');
   const currentHostEl = document.getElementById('current-host');
   const copyInviteBtn = document.getElementById('copy-invite-btn');
+  const chatBtn = document.getElementById('chat-btn');
+  const chatUnreadEl = document.getElementById('chat-unread');
+  const chatPanel = document.getElementById('chat-panel');
+  const chatCloseBtn = document.getElementById('chat-close-btn');
+  const chatMessagesEl = document.getElementById('chat-messages');
+  const chatForm = document.getElementById('chat-form');
+  const chatInput = document.getElementById('chat-input');
+  const connectionQualityEl = document.getElementById('connection-quality');
   const helpBtn = document.getElementById('help-btn');
   const helpOverlay = document.getElementById('help-overlay');
   const helpCloseBtn = document.getElementById('help-close-btn');
@@ -696,6 +774,20 @@
       inviteRoomInvalid: 'Adj meg egy érvényes asztalnevet.',
       inviteRoomTaken: 'Ez az asztalnév már foglalt. Adj meg másikat.',
       online: 'Kapcsolódva',
+      connectionQuality: 'Kapcsolat:',
+      qualityHost: 'host',
+      qualityGood: ms => `jó · ${ms} ms`,
+      qualityMedium: ms => `közepes · ${ms} ms`,
+      qualityBad: ms => `gyenge · ${ms} ms`,
+      qualityReconnecting: 'újracsatlakozás…',
+      chatTitle: 'Asztali chat',
+      chatOpen: 'Chat megnyitása',
+      chatClose: 'Chat bezárása',
+      chatPlaceholder: 'Üzenet…',
+      chatSend: 'Küldés',
+      chatEmpty: 'Még nincs üzenet.',
+      hostMigrating: 'A host kapcsolata megszakadt. Új host választása és újracsatlakozás…',
+      hostMigrated: 'Új host vette át az asztalt.',
       connecting: 'Kapcsolódás…',
       offline: 'Nincs kapcsolat',
       intro: 'Nyomd meg a SET! gombot, majd válassz ki három kártyát.',
@@ -797,6 +889,20 @@
       inviteRoomInvalid: 'Enter a valid table name.',
       inviteRoomTaken: 'This table name is already in use. Choose another.',
       online: 'Connected',
+      connectionQuality: 'Connection:',
+      qualityHost: 'host',
+      qualityGood: ms => `good · ${ms} ms`,
+      qualityMedium: ms => `fair · ${ms} ms`,
+      qualityBad: ms => `weak · ${ms} ms`,
+      qualityReconnecting: 'reconnecting…',
+      chatTitle: 'Table chat',
+      chatOpen: 'Open chat',
+      chatClose: 'Close chat',
+      chatPlaceholder: 'Message…',
+      chatSend: 'Send',
+      chatEmpty: 'No messages yet.',
+      hostMigrating: 'Host connection lost. Electing a new host and reconnecting…',
+      hostMigrated: 'A new host has taken over the table.',
       connecting: 'Connecting…',
       offline: 'Offline',
       intro: 'Press SET!, then select three cards.',
@@ -898,6 +1004,20 @@
       inviteRoomInvalid: 'Gib einen gültigen Tischnamen ein.',
       inviteRoomTaken: 'Dieser Tischname ist bereits vergeben. Wähle einen anderen.',
       online: 'Verbunden',
+      connectionQuality: 'Verbindung:',
+      qualityHost: 'Host',
+      qualityGood: ms => `gut · ${ms} ms`,
+      qualityMedium: ms => `mittel · ${ms} ms`,
+      qualityBad: ms => `schwach · ${ms} ms`,
+      qualityReconnecting: 'Verbindung wird neu aufgebaut…',
+      chatTitle: 'Tisch-Chat',
+      chatOpen: 'Chat öffnen',
+      chatClose: 'Chat schließen',
+      chatPlaceholder: 'Nachricht…',
+      chatSend: 'Senden',
+      chatEmpty: 'Noch keine Nachrichten.',
+      hostMigrating: 'Host-Verbindung verloren. Neuer Host wird gewählt und Verbindung neu aufgebaut…',
+      hostMigrated: 'Ein neuer Host hat den Tisch übernommen.',
       connecting: 'Verbindung…',
       offline: 'Offline',
       intro: 'Drücke SET! und wähle dann drei Karten aus.',
@@ -977,6 +1097,17 @@
   let hostHeartbeatTimer = null;
   let p2pStarted = false;
   let p2pConnected = false;
+  let pingTimer = null;
+  let pingSeq = 0;
+  let guestLastPongAt = 0;
+  let guestRttMs = null;
+  const peerPingState = new Map();
+  let migrationInProgress = false;
+  let periodicCheckpointTimer = null;
+  let lastCheckpointAt = 0;
+  const chatMessages = [];
+  let chatUnread = 0;
+  const MAX_CHAT_MESSAGES = 200;
 
   const RTC_CONFIG = {
     iceServers: [
@@ -1232,6 +1363,10 @@
       const value = translations[currentLang][el.dataset.i18n];
       if (typeof value === 'string') el.textContent = value;
     });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const value = translations[currentLang][el.dataset.i18nPlaceholder];
+      if (typeof value === 'string') el.placeholder = value;
+    });
     langButtons.forEach(btn => {
       const active = btn.dataset.lang === currentLang;
       btn.classList.toggle('active', active);
@@ -1245,6 +1380,8 @@
       currentLang = btn.dataset.lang;
       localStorage.setItem('set-language', currentLang);
       applyLanguage();
+      renderChat();
+      renderConnectionQuality();
       if (!helpOverlay.classList.contains('hidden')) renderHelpContent();
       if (roomState) {
         message.textContent = t('intro');
@@ -1390,6 +1527,191 @@
     connectionText.textContent = mode === 'online' ? t('online') : mode === 'error' ? t('offline') : t('connecting');
   }
 
+  function appendChatMessage(msg) {
+    if (!msg || !msg.id || chatMessages.some(x => x.id === msg.id)) return;
+    chatMessages.push(msg);
+    if (chatMessages.length > MAX_CHAT_MESSAGES) chatMessages.shift();
+    if (chatPanel.classList.contains('hidden') && msg.from_client !== clientId) {
+      chatUnread++;
+      updateChatUnread();
+    }
+    renderChat();
+  }
+
+  function renderChat() {
+    chatMessagesEl.innerHTML = '';
+    if (!chatMessages.length) {
+      const empty = document.createElement('div');
+      empty.className = 'chat-empty';
+      empty.textContent = t('chatEmpty');
+      chatMessagesEl.appendChild(empty);
+      return;
+    }
+    for (const msg of chatMessages) {
+      const item = document.createElement('div');
+      item.className = 'chat-message' + (msg.from_client === clientId ? ' me' : '');
+      const meta = document.createElement('div');
+      meta.className = 'chat-meta';
+      const name = document.createElement('strong');
+      name.textContent = msg.name || 'Player';
+      const time = document.createElement('span');
+      time.textContent = new Date(Number(msg.ts || Date.now())).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      meta.append(name, time);
+      const body = document.createElement('div');
+      body.textContent = String(msg.text || '');
+      item.append(meta, body);
+      chatMessagesEl.appendChild(item);
+    }
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  function updateChatUnread() {
+    if (chatUnread > 0) {
+      chatUnreadEl.textContent = String(Math.min(chatUnread, 99));
+      chatUnreadEl.classList.remove('hidden');
+    } else {
+      chatUnreadEl.classList.add('hidden');
+    }
+  }
+
+  function openChat() {
+    if (gameMode !== 'table') return;
+    chatPanel.classList.remove('hidden');
+    chatUnread = 0;
+    updateChatUnread();
+    renderChat();
+    setTimeout(() => chatInput.focus(), 0);
+  }
+
+  function closeChat() {
+    chatPanel.classList.add('hidden');
+  }
+
+  function sendChatMessage(text) {
+    const trimmed = String(text || '').trim().slice(0, 500);
+    if (!trimmed) return;
+    const msg = {
+      type:'chat',
+      id:`${clientId}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      from_client:clientId,
+      name:playerName || 'Player',
+      text:trimmed,
+      ts:Date.now()
+    };
+    if (isHostClient) {
+      appendChatMessage(msg);
+      broadcastP2P(msg);
+    } else {
+      safeJsonSend(hostDataChannel, msg);
+    }
+  }
+
+  function qualityLabel(ms) {
+    const rounded = Math.max(0, Math.round(ms));
+    if (rounded < 120) return t('qualityGood')(rounded);
+    if (rounded < 300) return t('qualityMedium')(rounded);
+    return t('qualityBad')(rounded);
+  }
+
+  function renderConnectionQuality() {
+    connectionQualityEl.classList.remove('quality-good','quality-medium','quality-bad');
+    if (gameMode !== 'table') {
+      connectionQualityEl.textContent = '—';
+      return;
+    }
+    if (migrationInProgress) {
+      connectionQualityEl.textContent = t('qualityReconnecting');
+      connectionQualityEl.classList.add('quality-medium');
+      return;
+    }
+    if (isHostClient) {
+      const values = [...peerPingState.values()].map(v => v.rtt).filter(Number.isFinite);
+      if (!values.length) {
+        connectionQualityEl.textContent = t('qualityHost');
+        connectionQualityEl.classList.add('quality-good');
+      } else {
+        const worst = Math.max(...values);
+        connectionQualityEl.textContent = qualityLabel(worst);
+        connectionQualityEl.classList.add(worst < 120 ? 'quality-good' : worst < 300 ? 'quality-medium' : 'quality-bad');
+      }
+      return;
+    }
+    if (!p2pConnected || !Number.isFinite(guestRttMs)) {
+      connectionQualityEl.textContent = p2pConnected ? '—' : t('qualityReconnecting');
+      connectionQualityEl.classList.add(p2pConnected ? 'quality-medium' : 'quality-bad');
+      return;
+    }
+    connectionQualityEl.textContent = qualityLabel(guestRttMs);
+    connectionQualityEl.classList.add(guestRttMs < 120 ? 'quality-good' : guestRttMs < 300 ? 'quality-medium' : 'quality-bad');
+  }
+
+  function stopPingLoop() {
+    if (pingTimer) clearInterval(pingTimer);
+    pingTimer = null;
+  }
+
+  function startPingLoop() {
+    stopPingLoop();
+    guestLastPongAt = Date.now();
+    pingTimer = setInterval(() => {
+      const now = Date.now();
+      if (gameMode !== 'table' || !p2pStarted) return;
+      if (isHostClient) {
+        for (const [peerId, channel] of dataChannels.entries()) {
+          if (!channel || channel.readyState !== 'open') continue;
+          let state = peerPingState.get(peerId);
+          if (!state) {
+            state = {lastPongAt:now, rtt:null, pending:new Map()};
+            peerPingState.set(peerId, state);
+          }
+          if (now - Number(state.lastPongAt || 0) > 16000) {
+            try { channel.close(); } catch {}
+            continue;
+          }
+          const nonce = `${clientId}-${++pingSeq}`;
+          state.pending.set(nonce, now);
+          safeJsonSend(channel, {type:'ping', nonce, sent_at:now});
+        }
+      } else if (hostDataChannel && hostDataChannel.readyState === 'open') {
+        if (now - guestLastPongAt > 16000) {
+          try { hostDataChannel.close(); } catch {}
+          triggerHostRecovery();
+          return;
+        }
+        const nonce = `${clientId}-${++pingSeq}`;
+        safeJsonSend(hostDataChannel, {type:'ping', nonce, sent_at:now});
+      }
+      renderConnectionQuality();
+    }, 5000);
+  }
+
+  async function triggerHostRecovery() {
+    if (migrationInProgress || gameMode !== 'table' || isHostClient) return;
+    migrationInProgress = true;
+    message.textContent = t('hostMigrating');
+    renderConnectionQuality();
+    try {
+      await closeP2P(false);
+      await attemptHostTakeover();
+    } finally {
+      migrationInProgress = false;
+      renderConnectionQuality();
+    }
+  }
+
+  function startPeriodicCheckpoint() {
+    stopPeriodicCheckpoint();
+    if (!isHostClient || gameMode !== 'table') return;
+    periodicCheckpointTimer = setInterval(() => {
+      checkpointRoomState().catch(err => console.error('periodic checkpoint', err));
+    }, 60000);
+  }
+
+  function stopPeriodicCheckpoint() {
+    if (periodicCheckpointTimer) clearInterval(periodicCheckpointTimer);
+    periodicCheckpointTimer = null;
+  }
+
   function safeJsonSend(channel, payload) {
     if (!channel || channel.readyState !== 'open') return false;
     try {
@@ -1468,10 +1790,12 @@
 
   function setupHostDataChannel(peerId, channel) {
     dataChannels.set(peerId, channel);
+    peerPingState.set(peerId, {lastPongAt:Date.now(), rtt:null, pending:new Map()});
 
     channel.onopen = () => {
       setConnectionStatus('online');
       p2pConnected = true;
+      renderConnectionQuality();
       // The guest sends hello as soon as its side opens.
     };
 
@@ -1487,6 +1811,7 @@
     channel.onclose = () => {
       dataChannels.delete(peerId);
       peerConnections.delete(peerId);
+      peerPingState.delete(peerId);
       const old = presenceMap.get(peerId);
       if (old) {
         presenceMap.delete(peerId);
@@ -1501,7 +1826,9 @@
 
     channel.onopen = () => {
       p2pConnected = true;
+      guestLastPongAt = Date.now();
       setConnectionStatus('online');
+      renderConnectionQuality();
 
       safeJsonSend(channel, {
         type: 'hello',
@@ -1538,12 +1865,45 @@
     channel.onclose = () => {
       p2pConnected = false;
       setConnectionStatus('error');
-      setTimeout(() => attemptHostTakeover(), 3000);
+      renderConnectionQuality();
+      setTimeout(() => triggerHostRecovery(), 1800);
     };
   }
 
   async function handleHostP2PMessage(peerId, msg) {
     if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'ping') {
+      safeJsonSend(dataChannels.get(peerId), {type:'pong', nonce:msg.nonce, sent_at:msg.sent_at});
+      return;
+    }
+    if (msg.type === 'pong') {
+      const state = peerPingState.get(peerId);
+      if (state) {
+        const sent = state.pending.get(msg.nonce);
+        if (sent) {
+          state.pending.delete(msg.nonce);
+          state.rtt = Math.max(0, Date.now() - sent);
+        }
+        state.lastPongAt = Date.now();
+        renderConnectionQuality();
+      }
+      return;
+    }
+    if (msg.type === 'chat') {
+      const clean = {
+        type:'chat',
+        id:String(msg.id || `${peerId}-${Date.now()}`),
+        from_client:peerId,
+        name:String(msg.name || presenceMap.get(peerId)?.name || 'Player').slice(0,32),
+        text:String(msg.text || '').trim().slice(0,500),
+        ts:Number(msg.ts || Date.now())
+      };
+      if (!clean.text) return;
+      appendChatMessage(clean);
+      broadcastP2P(clean);
+      return;
+    }
 
     if (msg.type === 'hello') {
       const p = {
@@ -1643,6 +2003,23 @@
 
   function handleGuestP2PMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'ping') {
+      safeJsonSend(hostDataChannel, {type:'pong', nonce:msg.nonce, sent_at:msg.sent_at});
+      return;
+    }
+    if (msg.type === 'pong') {
+      guestLastPongAt = Date.now();
+      if (Number.isFinite(Number(msg.sent_at))) {
+        guestRttMs = Math.max(0, Date.now() - Number(msg.sent_at));
+      }
+      renderConnectionQuality();
+      return;
+    }
+    if (msg.type === 'chat') {
+      appendChatMessage(msg);
+      return;
+    }
 
     if (msg.type === 'snapshot') {
       roomState = msg.state || roomState;
@@ -1786,6 +2163,9 @@
     await subscribeSignaling();
     setConnectionStatus('online');
     startHostHeartbeat();
+    startPeriodicCheckpoint();
+    startPingLoop();
+    renderConnectionQuality();
     render();
   }
 
@@ -1817,9 +2197,11 @@
     const offer = await hostPeer.createOffer();
     await hostPeer.setLocalDescription(offer);
     await insertSignal(hostClientId, 'offer', hostPeer.localDescription.toJSON());
+    startPingLoop();
+    renderConnectionQuality();
   }
 
-  async function closeP2P() {
+  async function closeP2P(resetQuality = true) {
     p2pStarted = false;
     p2pConnected = false;
 
@@ -1848,6 +2230,11 @@
     peerConnections.clear();
 
     stopHostHeartbeat();
+    stopPeriodicCheckpoint();
+    stopPingLoop();
+    peerPingState.clear();
+    guestRttMs = null;
+    if (resetQuality) renderConnectionQuality();
   }
 
   function startHostHeartbeat() {
@@ -1859,7 +2246,7 @@
         host_name: playerName,
         last_activity_at: new Date().toISOString()
       }).eq('name', roomName).then(() => {});
-    }, 60000);
+    }, 30000);
   }
 
   function stopHostHeartbeat() {
@@ -1891,12 +2278,16 @@
     }).eq('name', roomName);
 
     if (error) console.error('checkpoint', error);
+    else lastCheckpointAt = Date.now();
   }
 
   async function attemptHostTakeover() {
     if (gameMode !== 'table' || isHostClient || !roomName) return;
 
     const oldHost = hostClientId;
+    migrationInProgress = true;
+    message.textContent = t('hostMigrating');
+    renderConnectionQuality();
     try {
       const { data, error } = await db
         .from('rooms')
@@ -1920,18 +2311,24 @@
         await closeP2P();
         await startHostP2P();
         scheduleRoomCheckpoint();
-        message.textContent = 'Host migrated.';
+        message.textContent = t('hostMigrated');
+        migrationInProgress = false;
+        renderConnectionQuality();
         return;
       }
 
       const latest = await fetchRoom();
       hostClientId = latest?.host_client_id || null;
       if (hostClientId && hostClientId !== clientId) {
-        await closeP2P();
+        // A different guest became host. Establish fresh signaling to that host.
+        await closeP2P(false);
         await startGuestP2P();
       }
     } catch (err) {
       console.error('host takeover', err);
+    } finally {
+      migrationInProgress = false;
+      renderConnectionQuality();
     }
   }
 
@@ -2127,6 +2524,7 @@
 
     renderPresence();
     renderLiveClaim();
+    renderConnectionQuality();
   }
 
   function activePresenceNames() {
@@ -2351,6 +2749,7 @@
       history.replaceState({}, '', url);
       document.title = 'SET Multiplayer';
 
+      closeChat();
       gameScreen.classList.add('hidden');
       joinScreen.classList.remove('hidden');
       gameScreen.classList.remove('solo-mode');
@@ -3169,6 +3568,16 @@
   downloadResultsBtn.addEventListener('click', downloadResults);
   deleteTableBtn.addEventListener('click', deleteCurrentTable);
   copyInviteBtn.addEventListener('click', copyInviteLink);
+  chatBtn.addEventListener('click', openChat);
+  chatCloseBtn.addEventListener('click', closeChat);
+  chatForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    sendChatMessage(text);
+    chatInput.value = '';
+    chatInput.focus();
+  });
   helpBtn.addEventListener('click', openHelp);
   helpCloseBtn.addEventListener('click', closeHelp);
   helpOverlay.addEventListener('click', event => {
@@ -3231,6 +3640,7 @@
     const url = appRootUrl();
     history.replaceState({}, '', url);
 
+    closeChat();
     gameScreen.classList.add('hidden');
     joinScreen.classList.remove('hidden');
     gameScreen.classList.remove('solo-mode');
