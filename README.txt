@@ -1,14 +1,16 @@
-SET GitHub Pages – draggable P2P chat + transient page messages
+SET GitHub Pages – robust WebRTC signaling fix
 
-New:
-- Table chat is draggable by its header.
-- Uses Pointer Events, so dragging works with mouse, touch and pen.
-- Window is clamped to the visible viewport and stays on-screen after rotation/resize.
-- Every new chat message also appears below the cards, directly above the SET rule.
-- Those inline messages stay for 30 seconds total:
-    27 s fully visible + 3 s fade-out.
-- Clicking an inline message opens the chat window.
-- Maximum 5 inline messages are kept visible at once.
-- Help text updated in Hungarian, English and German.
+Fixes:
+- Waits until the Supabase Realtime signaling channel is actually SUBSCRIBED.
+- Replays recent rtc_signals rows so an offer/answer is not lost during a race.
+- De-duplicates signaling rows that arrive both by replay and Realtime.
+- Keeps guest signaling alive until ICE + DataChannel are stable.
+- Releases signaling only after a 7-second stable grace period.
+- Shows P2P phase: signaling / offer / answer / ICE / active / retry / failed.
+- Automatic WebRTC handshake retry if DataChannel does not open within 12 seconds.
+- Automatic retry on ICE / PeerConnection failure or disconnect.
+- Fresh signaling after host migration.
+- Existing P2P chat, draggable chat window, 30-second inline messages,
+  PING/PONG and checkpoints are preserved.
 
-No new Supabase SQL is required.
+No new Supabase SQL is required if supabase_p2p_signaling.sql was already run.

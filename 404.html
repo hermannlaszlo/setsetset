@@ -580,6 +580,7 @@
     <div class="roomline multiplayer-only">
       <span><span id="status-dot" class="status-dot"></span><span id="connection-text">Connecting…</span></span>
       <span><span data-i18n="connectionQuality">Connection:</span> <strong id="connection-quality">—</strong></span>
+      <span><span>P2P:</span> <strong id="p2p-phase">—</strong></span>
       <span><span data-i18n="table">Table:</span> <strong id="current-room"></strong></span>
       <span><span data-i18n="you">You:</span> <strong id="current-player"></strong></span>
       <span><span data-i18n="yourRole">Role:</span> <strong id="current-role"></strong></span>
@@ -738,6 +739,7 @@
   const chatDragHandle = document.getElementById('chat-drag-handle');
   const chatToastArea = document.getElementById('chat-toast-area');
   const connectionQualityEl = document.getElementById('connection-quality');
+  const p2pPhaseEl = document.getElementById('p2p-phase');
   const helpBtn = document.getElementById('help-btn');
   const helpOverlay = document.getElementById('help-overlay');
   const helpCloseBtn = document.getElementById('help-close-btn');
@@ -834,6 +836,14 @@
       inviteRoomTaken: 'Ez az asztalnév már foglalt. Adj meg másikat.',
       online: 'Kapcsolódva',
       connectionQuality: 'Kapcsolat:',
+      p2pIdle: 'nincs kapcsolat',
+      p2pSignaling: 'signaling…',
+      p2pOffer: 'offer elküldve…',
+      p2pAnswer: 'answer érkezett…',
+      p2pIce: 'ICE kapcsolat épül…',
+      p2pActive: 'aktív',
+      p2pRetry: 'újrapróbálás…',
+      p2pFailed: 'nem sikerült',
       qualityHost: 'host',
       qualityGood: ms => `jó · ${ms} ms`,
       qualityMedium: ms => `közepes · ${ms} ms`,
@@ -952,6 +962,14 @@
       inviteRoomTaken: 'This table name is already in use. Choose another.',
       online: 'Connected',
       connectionQuality: 'Connection:',
+      p2pIdle: 'not connected',
+      p2pSignaling: 'signaling…',
+      p2pOffer: 'offer sent…',
+      p2pAnswer: 'answer received…',
+      p2pIce: 'ICE connecting…',
+      p2pActive: 'active',
+      p2pRetry: 'retrying…',
+      p2pFailed: 'failed',
       qualityHost: 'host',
       qualityGood: ms => `good · ${ms} ms`,
       qualityMedium: ms => `fair · ${ms} ms`,
@@ -1070,6 +1088,14 @@
       inviteRoomTaken: 'Dieser Tischname ist bereits vergeben. Wähle einen anderen.',
       online: 'Verbunden',
       connectionQuality: 'Verbindung:',
+      p2pIdle: 'nicht verbunden',
+      p2pSignaling: 'Signaling…',
+      p2pOffer: 'Offer gesendet…',
+      p2pAnswer: 'Answer empfangen…',
+      p2pIce: 'ICE-Verbindung wird aufgebaut…',
+      p2pActive: 'aktiv',
+      p2pRetry: 'neuer Versuch…',
+      p2pFailed: 'fehlgeschlagen',
       qualityHost: 'Host',
       qualityGood: ms => `gut · ${ms} ms`,
       qualityMedium: ms => `mittel · ${ms} ms`,
@@ -1165,6 +1191,11 @@
   let hostHeartbeatTimer = null;
   let p2pStarted = false;
   let p2pConnected = false;
+  let p2pPhase = 'idle';
+  let signalingReleaseTimer = null;
+  let guestReconnectTimer = null;
+  let guestConnectAttempts = 0;
+  const processedSignalIds = new Set();
   let pingTimer = null;
   let pingSeq = 0;
   let guestLastPongAt = 0;
@@ -1379,7 +1410,8 @@
         roomState.host_client_id = clientId;
 
         applyModeUI();
-        await closeP2P();
+        await closeP2P(false);
+        processedSignalIds.clear();
         await startHostP2P();
         startTimerLoop();
         render();
@@ -1454,6 +1486,7 @@
       localStorage.setItem('set-language', currentLang);
       applyLanguage();
       renderChat();
+      setP2PPhase(p2pPhase);
       renderChatStatus();
       renderConnectionQuality();
       if (!helpOverlay.classList.contains('hidden')) renderHelpContent();
@@ -1772,7 +1805,9 @@
   function renderChatStatus() {
     if (!chatStatusEl) return;
     const connected = gameMode === 'table' && (isHostClient || (hostDataChannel && hostDataChannel.readyState === 'open'));
-    chatStatusEl.textContent = connected ? t('chatConnected') : t('chatDisconnected');
+    chatStatusEl.textContent = connected
+      ? t('chatConnected')
+      : `${t('chatDisconnected')} · ${p2pPhaseEl?.textContent || ''}`;
     chatStatusEl.classList.toggle('online', connected);
     chatStatusEl.classList.toggle('offline', !connected);
   }
@@ -1931,6 +1966,160 @@
     periodicCheckpointTimer = null;
   }
 
+  function setP2PPhase(phase) {
+    p2pPhase = phase;
+    if (!p2pPhaseEl) return;
+
+    const key = {
+      idle: 'p2pIdle',
+      signaling: 'p2pSignaling',
+      offer: 'p2pOffer',
+      answer: 'p2pAnswer',
+      ice: 'p2pIce',
+      active: 'p2pActive',
+      retry: 'p2pRetry',
+      failed: 'p2pFailed'
+    }[phase] || 'p2pIdle';
+
+    p2pPhaseEl.textContent = t(key);
+  }
+
+  function clearSignalingReleaseTimer() {
+    if (signalingReleaseTimer) clearTimeout(signalingReleaseTimer);
+    signalingReleaseTimer = null;
+  }
+
+  function maybeReleaseGuestSignaling() {
+    if (isHostClient || !hostPeer || !signalChannel) return;
+
+    const iceState = hostPeer.iceConnectionState;
+    const connectionState = hostPeer.connectionState;
+    const stable =
+      ['connected','completed'].includes(iceState) ||
+      connectionState === 'connected';
+
+    if (!stable || !hostDataChannel || hostDataChannel.readyState !== 'open') return;
+
+    clearSignalingReleaseTimer();
+    signalingReleaseTimer = setTimeout(async () => {
+      if (
+        !isHostClient &&
+        hostPeer &&
+        hostDataChannel &&
+        hostDataChannel.readyState === 'open' &&
+        (
+          ['connected','completed'].includes(hostPeer.iceConnectionState) ||
+          hostPeer.connectionState === 'connected'
+        ) &&
+        signalChannel
+      ) {
+        try { await db.removeChannel(signalChannel); } catch {}
+        signalChannel = null;
+      }
+    }, 7000);
+  }
+
+  function clearGuestReconnectTimer() {
+    if (guestReconnectTimer) clearTimeout(guestReconnectTimer);
+    guestReconnectTimer = null;
+  }
+
+  function scheduleGuestReconnect(reason = '') {
+    if (isHostClient || gameMode !== 'table' || migrationInProgress) return;
+    clearGuestReconnectTimer();
+
+    const delay = Math.min(12000, 1200 * Math.max(1, guestConnectAttempts + 1));
+    setP2PPhase('retry');
+
+    guestReconnectTimer = setTimeout(async () => {
+      if (isHostClient || gameMode !== 'table' || migrationInProgress) return;
+      guestConnectAttempts++;
+
+      try {
+        await closeGuestPeerOnly();
+        const latest = await fetchRoom();
+        hostClientId = latest?.host_client_id || hostClientId;
+        if (!hostClientId || hostClientId === clientId) {
+          await attemptHostTakeover();
+          return;
+        }
+        await startGuestP2P();
+      } catch (err) {
+        console.error('P2P guest reconnect', reason, err);
+        setP2PPhase('failed');
+        scheduleGuestReconnect('retry-failed');
+      }
+    }, delay);
+  }
+
+  async function closeGuestPeerOnly() {
+    clearSignalingReleaseTimer();
+
+    if (signalChannel) {
+      try { await db.removeChannel(signalChannel); } catch {}
+      signalChannel = null;
+    }
+    if (hostDataChannel) {
+      try { hostDataChannel.close(); } catch {}
+      hostDataChannel = null;
+    }
+    if (hostPeer) {
+      try { hostPeer.close(); } catch {}
+      hostPeer = null;
+    }
+
+    pendingIce.delete(hostClientId);
+    p2pConnected = false;
+    guestRttMs = null;
+    renderChatStatus();
+    renderConnectionQuality();
+  }
+
+  function waitForChannelSubscribed(channel, timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        reject(new Error('Supabase signaling subscription timeout'));
+      }, timeoutMs);
+
+      channel.subscribe(status => {
+        if (done) return;
+        if (status === 'SUBSCRIBED') {
+          done = true;
+          clearTimeout(timer);
+          resolve();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          done = true;
+          clearTimeout(timer);
+          reject(new Error(`Supabase signaling channel: ${status}`));
+        }
+      });
+    });
+  }
+
+  async function replayRecentSignals() {
+    const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data, error } = await db
+      .from('rtc_signals')
+      .select('id,room_name,from_client,to_client,kind,payload,created_at')
+      .eq('room_name', roomName)
+      .gte('created_at', since)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn('Could not replay recent WebRTC signals', error);
+      return;
+    }
+
+    for (const row of data || []) {
+      if (row.to_client && row.to_client !== clientId) continue;
+      if (row.from_client === clientId) continue;
+      await handleSignalRow(row);
+    }
+  }
+
   function safeJsonSend(channel, payload) {
     if (!channel || channel.readyState !== 'open') return false;
     try {
@@ -2014,6 +2203,7 @@
     channel.onopen = () => {
       setConnectionStatus('online');
       p2pConnected = true;
+      setP2PPhase('active');
       renderConnectionQuality();
       renderChatStatus();
       flushPendingChatMessages();
@@ -2047,8 +2237,10 @@
 
     channel.onopen = () => {
       p2pConnected = true;
+      guestConnectAttempts = 0;
       guestLastPongAt = Date.now();
       setConnectionStatus('online');
+      setP2PPhase('active');
       renderConnectionQuality();
 
       safeJsonSend(channel, {
@@ -2070,11 +2262,9 @@
       flushPendingChatMessages();
       renderChatStatus();
 
-      // Guest signaling is needed only until the direct WebRTC connection is open.
-      if (signalChannel) {
-        db.removeChannel(signalChannel);
-        signalChannel = null;
-      }
+      // Keep signaling alive until ICE is fully stable. Some browsers still
+      // exchange late ICE candidates after the DataChannel opens.
+      maybeReleaseGuestSignaling();
     };
 
     channel.onmessage = event => {
@@ -2089,9 +2279,10 @@
     channel.onclose = () => {
       p2pConnected = false;
       setConnectionStatus('error');
+      setP2PPhase('failed');
       renderConnectionQuality();
       renderChatStatus();
-      setTimeout(() => triggerHostRecovery(), 1800);
+      scheduleGuestReconnect('datachannel-closed');
     };
   }
 
@@ -2305,7 +2496,13 @@
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      if (['checking','new'].includes(pc.iceConnectionState)) setP2PPhase('ice');
+      if (['connected','completed'].includes(pc.iceConnectionState)) setP2PPhase('active');
+    };
+
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') setP2PPhase('active');
       if (['failed','closed'].includes(pc.connectionState)) {
         const ch = dataChannels.get(peerId);
         try { ch?.close(); } catch {}
@@ -2324,10 +2521,13 @@
   async function handleSignalRow(row) {
     if (!row || row.room_name !== roomName || row.from_client === clientId) return;
     if (row.to_client && row.to_client !== clientId) return;
+    if (row.id && processedSignalIds.has(row.id)) return;
+    if (row.id) processedSignalIds.add(row.id);
 
     try {
       if (isHostClient) {
         if (row.kind === 'offer') {
+          setP2PPhase('signaling');
           await createHostPeerForOffer(row.from_client, row.payload);
         } else if (row.kind === 'ice') {
           const pc = peerConnections.get(row.from_client);
@@ -2336,8 +2536,11 @@
       } else {
         if (row.from_client !== hostClientId) return;
         if (row.kind === 'answer' && hostPeer) {
+          setP2PPhase('answer');
           await hostPeer.setRemoteDescription(row.payload);
           await flushPendingIce(hostClientId, hostPeer);
+          setP2PPhase('ice');
+          maybeReleaseGuestSignaling();
         } else if (row.kind === 'ice') {
           queueOrAddIce(hostClientId, hostPeer, row.payload);
         }
@@ -2349,19 +2552,24 @@
 
   async function subscribeSignaling() {
     if (signalChannel) {
-      await db.removeChannel(signalChannel);
+      try { await db.removeChannel(signalChannel); } catch {}
       signalChannel = null;
     }
 
-    signalChannel = db
-      .channel(`rtc-signals-${roomName}-${clientId}`)
+    setP2PPhase('signaling');
+
+    const channel = db
+      .channel(`rtc-signals-${roomName}-${clientId}-${Date.now()}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'rtc_signals',
         filter: `room_name=eq.${roomName}`
-      }, payload => handleSignalRow(payload.new))
-      .subscribe();
+      }, payload => handleSignalRow(payload.new).catch(err => console.error('signal row', err)));
+
+    signalChannel = channel;
+    await waitForChannelSubscribed(channel);
+    await replayRecentSignals();
   }
 
   async function startHostP2P() {
@@ -2369,6 +2577,7 @@
     hostClientId = clientId;
     p2pStarted = true;
     p2pConnected = true;
+    setP2PPhase('signaling');
 
     myPresence = {
       client_id: clientId,
@@ -2383,6 +2592,7 @@
 
     await subscribeSignaling();
     setConnectionStatus('online');
+    setP2PPhase('active');
     startHostHeartbeat();
     startPeriodicCheckpoint();
     startPingLoop();
@@ -2395,8 +2605,19 @@
     p2pStarted = true;
     p2pConnected = false;
     setConnectionStatus('connecting');
+    setP2PPhase('signaling');
 
     await subscribeSignaling();
+
+    // The host may have changed while signaling was being established.
+    const latestRoom = await fetchRoom();
+    hostClientId = latestRoom?.host_client_id || hostClientId;
+    if (!hostClientId) throw new Error('No active host for WebRTC');
+    if (hostClientId === clientId) {
+      await closeGuestPeerOnly();
+      await startHostP2P();
+      return;
+    }
 
     hostPeer = new RTCPeerConnection(RTC_CONFIG);
     const channel = hostPeer.createDataChannel('set-table', { ordered: true });
@@ -2408,18 +2629,56 @@
       }
     };
 
+    hostPeer.oniceconnectionstatechange = () => {
+      const state = hostPeer?.iceConnectionState;
+      if (['new','checking'].includes(state)) setP2PPhase('ice');
+      if (['connected','completed'].includes(state)) {
+        setP2PPhase(hostDataChannel?.readyState === 'open' ? 'active' : 'ice');
+        maybeReleaseGuestSignaling();
+      }
+      if (['failed'].includes(state)) {
+        setP2PPhase('failed');
+        scheduleGuestReconnect(`ice-${state}`);
+      }
+    };
+
     hostPeer.onconnectionstatechange = () => {
-      if (['failed','closed','disconnected'].includes(hostPeer.connectionState)) {
+      const state = hostPeer?.connectionState;
+      if (state === 'connected') {
+        setP2PPhase(hostDataChannel?.readyState === 'open' ? 'active' : 'ice');
+        maybeReleaseGuestSignaling();
+      } else if (state === 'failed') {
         p2pConnected = false;
         setConnectionStatus('error');
+        setP2PPhase('failed');
+        scheduleGuestReconnect(`pc-${state}`);
+      } else if (state === 'disconnected') {
+        p2pConnected = false;
+        setConnectionStatus('connecting');
+        setP2PPhase('retry');
+        scheduleGuestReconnect(`pc-${state}`);
       }
     };
 
     const offer = await hostPeer.createOffer();
     await hostPeer.setLocalDescription(offer);
     await insertSignal(hostClientId, 'offer', hostPeer.localDescription.toJSON());
+    setP2PPhase('offer');
+
     startPingLoop();
     renderConnectionQuality();
+
+    // If no DataChannel opens in a reasonable time, rebuild the handshake.
+    setTimeout(() => {
+      if (
+        gameMode === 'table' &&
+        !isHostClient &&
+        (!hostDataChannel || hostDataChannel.readyState !== 'open')
+      ) {
+        setP2PPhase('retry');
+        scheduleGuestReconnect('connect-timeout');
+      }
+    }, 12000);
   }
 
   async function closeP2P(resetQuality = true) {
@@ -2453,8 +2712,12 @@
     stopHostHeartbeat();
     stopPeriodicCheckpoint();
     stopPingLoop();
+    clearSignalingReleaseTimer();
+    clearGuestReconnectTimer();
+    processedSignalIds.clear();
     peerPingState.clear();
     guestRttMs = null;
+    setP2PPhase('idle');
     if (resetQuality) renderConnectionQuality();
   }
 
@@ -2543,6 +2806,7 @@
       if (hostClientId && hostClientId !== clientId) {
         // A different guest became host. Establish fresh signaling to that host.
         await closeP2P(false);
+        processedSignalIds.clear();
         await startGuestP2P();
       }
     } catch (err) {
@@ -3976,6 +4240,7 @@
 
   applyLanguage();
   renderHelpContent();
+  setP2PPhase('idle');
   renderChat();
   renderChatStatus();
   modeSelect.value = 'solo';
