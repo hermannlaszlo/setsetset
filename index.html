@@ -1,0 +1,3359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f3">
+  <title>SET Multiplayer</title>
+  <style>
+    :root {
+      --bg: #f5f5f3;
+      --panel: #ffffff;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --accent: #2563eb;
+      --accent-bg: #dbeafe;
+      --good: #16794d;
+      --warn: #9a6700;
+      --bad: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 16px; }
+    .hidden { display: none !important; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .join-panel { max-width: 540px; margin: 32px auto; }
+    h1, h2, p { margin-top: 0; }
+    .field { display: grid; gap: 6px; margin: 14px 0; }
+    label { font-size: 14px; font-weight: 650; }
+    input, select {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      font-size: 16px;
+      background: #fff;
+      color: var(--text);
+    }
+    input:focus, select:focus {
+      outline: 3px solid var(--accent-bg);
+      border-color: var(--accent);
+    }
+    button {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 16px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent-bg); border-color: var(--accent); }
+    button.active { background: var(--accent-bg); border-color: var(--accent); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .toolbar-right {
+      margin-left: auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .score-label { color: var(--muted); font-size: 14px; white-space: nowrap; }
+    .language-switcher { display: flex; align-items: center; gap: 6px; }
+    .lang-btn {
+      width: 42px; min-width: 42px; height: 34px; min-height: 34px;
+      padding: 3px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .lang-btn svg {
+      width: 30px; height: 20px; display: block; border-radius: 2px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+    }
+    .lang-btn.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+    .roomline {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: 8px 14px; margin-bottom: 12px; font-size: 14px; color: var(--muted);
+    }
+    .roomline strong { color: var(--text); }
+    .status-dot {
+      display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      background: #9ca3af; margin-right: 5px;
+    }
+    .status-dot.online { background: var(--good); }
+    .status-dot.error { background: var(--bad); }
+
+    .presence-groups {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .presence-title {
+      font-size: 12px; color: var(--muted); margin-bottom: 6px;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .players {
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .player-chip {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    .player-chip.me { border-color: var(--accent); background: var(--accent-bg); }
+    .player-chip.thinking { border-color: var(--warn); }
+    .player-chip.away { opacity: .6; }
+
+    .message {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    .game-over-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: -4px 0 14px;
+    }
+    .history-panel {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    .history-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      justify-content: space-between;
+      padding: 7px 0;
+      border-top: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .history-row:first-child { border-top: 0; }
+    .history-result { color: var(--muted); }
+
+    .timer-panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    .timer-panel .grow { flex: 1; min-width: 180px; }
+    .timer-value { font-weight: 750; }
+
+    .card-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+      margin: 10px 0 12px;
+    }
+    .solo-mode .card-actions {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .card-actions button {
+      min-height: 52px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .set-action {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+    .think-action {
+      background: var(--panel);
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .set-card {
+      aspect-ratio: 1.55 / 1;
+      min-width: 0;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      padding: 5px;
+      cursor: pointer;
+      transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+    }
+    .set-card svg { width: 100%; height: 100%; display: block; }
+    .set-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-bg);
+      transform: translateY(-2px);
+    }
+    .set-card.remote-selected {
+      border-color: var(--warn);
+      box-shadow: 0 0 0 3px rgba(154,103,0,.18);
+      transform: translateY(-2px);
+    }
+    .set-card.empty-slot {
+      border-style: dashed;
+      border-color: #d8d8d4;
+      background: transparent;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+    .live-set-panel {
+      display:flex; justify-content:space-between; align-items:center; gap:12px;
+      margin-bottom:12px; padding:10px 12px; border:1px solid var(--warn);
+      border-radius:10px; background:#fff8db; font-size:14px;
+    }
+    .live-set-time { white-space:nowrap; font-size:16px; }
+    .help {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .error-text { color: var(--bad); font-size: 14px; min-height: 20px; }
+    .join-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+    .help-icon-btn {
+      width: 44px;
+      min-width: 44px;
+      padding: 0;
+      border-radius: 50%;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .help-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,.42);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .help-dialog {
+      width: min(760px, 100%);
+      max-height: min(84vh, 900px);
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .help-dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .help-dialog-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .help-close-btn {
+      width: 40px;
+      min-width: 40px;
+      height: 40px;
+      min-height: 40px;
+      padding: 0;
+      font-size: 26px;
+      line-height: 1;
+    }
+
+    .help-content {
+      overflow-y: auto;
+      padding: 16px;
+      line-height: 1.5;
+    }
+
+    .help-content h3 {
+      margin: 18px 0 8px;
+      font-size: 16px;
+    }
+
+    .help-content h3:first-child { margin-top: 0; }
+
+    .help-content ul {
+      margin: 6px 0 12px 20px;
+      padding: 0;
+    }
+
+    .help-content li { margin: 5px 0; }
+
+    .help-content code {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 5px;
+      font-size: .92em;
+    }
+
+    @media (max-width: 760px) {
+      .board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .toolbar-right { width: 100%; margin-left: 0; justify-content: space-between; }
+    }
+    @media (max-width: 430px) {
+      .wrap { padding: 10px; }
+      .toolbar { gap: 8px; }
+      .toolbar > button { flex: 1 1 calc(50% - 8px); padding: 10px 8px; }
+      .card-actions { gap: 8px; margin-top: 8px; }
+      .card-actions button { min-height: 50px; font-size: 17px; }
+      .board { gap: 7px; }
+      .join-panel { margin: 12px auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .set-card { transition: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap" id="app">
+
+  <section id="join-screen" class="panel join-panel">
+    <div class="language-switcher" role="group" aria-label="Language" style="justify-content:flex-end;">
+      <button class="lang-btn" type="button" data-lang="hu" aria-label="Magyar" title="Magyar">
+        <svg viewBox="0 0 30 20" aria-hidden="true">
+          <rect width="30" height="20" fill="#fff"/>
+          <rect width="30" height="6.667" y="0" fill="#ce2939"/>
+          <rect width="30" height="6.667" y="13.333" fill="#477050"/>
+        </svg>
+      </button>
+      <button class="lang-btn" type="button" data-lang="en" aria-label="English" title="English">
+        <svg viewBox="0 0 60 30" aria-hidden="true">
+          <rect width="60" height="30" fill="#012169"/>
+          <path d="M0 0 L60 30 M60 0 L0 30" stroke="#fff" stroke-width="6"/>
+          <path d="M0 0 L60 30 M60 0 L0 30" stroke="#C8102E" stroke-width="3"/>
+          <path d="M30 0 V30 M0 15 H60" stroke="#fff" stroke-width="10"/>
+          <path d="M30 0 V30 M0 15 H60" stroke="#C8102E" stroke-width="6"/>
+        </svg>
+      </button>
+      <button class="lang-btn" type="button" data-lang="de" aria-label="Deutsch" title="Deutsch">
+        <svg viewBox="0 0 30 20" aria-hidden="true">
+          <rect width="30" height="6.667" y="0" fill="#000"/>
+          <rect width="30" height="6.666" y="6.667" fill="#DD0000"/>
+          <rect width="30" height="6.667" y="13.333" fill="#FFCE00"/>
+        </svg>
+      </button>
+    </div>
+
+    <h1>SET</h1>
+    <p data-i18n="joinIntro">Choose how you want to play.</p>
+
+    <div class="field">
+      <label for="mode-select" data-i18n="mode">Game mode</label>
+      <select id="mode-select">
+        <option value="solo" selected data-i18n="modeSolo">Play alone</option>
+        <option value="table" data-i18n="modeTable">Join a table</option>
+      </select>
+    </div>
+
+    <form id="join-form">
+      <div id="solo-info" class="message" data-i18n="soloInfo">
+        Solo mode runs entirely in your browser and does not use Supabase.
+      </div>
+
+      <div id="table-fields" class="hidden">
+        <div class="field">
+          <label for="player-name" data-i18n="playerName">Player name</label>
+          <input id="player-name" maxlength="32" autocomplete="name">
+        </div>
+
+        <div class="field">
+          <label for="room-name" data-i18n="tableName">Table name</label>
+          <input id="room-name" maxlength="48" autocapitalize="none" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="role-select" data-i18n="role">Role</label>
+          <select id="role-select">
+            <option value="player" data-i18n="rolePlayer">Active player</option>
+            <option value="observer" data-i18n="roleObserver">Observer</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="join-actions">
+        <button id="join-button" class="primary" type="submit" data-i18n="start">Start</button>
+        <span id="join-state" class="error-text" aria-live="polite"></span>
+      </div>
+    </form>
+  </section>
+
+  <section id="game-screen" class="hidden">
+    <div class="toolbar">
+      <button id="new-card" class="primary" type="button" data-i18n="newCard">New card</button>
+      <button id="has-set" type="button" data-i18n="hasSet">Any SET?</button>
+      <button id="help-btn" class="help-icon-btn" type="button" aria-label="Help" title="Help">?</button>
+      <button id="copy-invite-btn" type="button" data-i18n="copyInvite">Invite</button>
+      <button id="leave-room" type="button" data-i18n="leave">Leave</button>
+
+      <div class="toolbar-right">
+        <div class="score-label">
+          <span data-i18n="myScore">My SETs:</span>
+          <strong id="my-score">0</strong>
+        </div>
+
+        <div class="language-switcher" role="group" aria-label="Language">
+          <button class="lang-btn" type="button" data-lang="hu" aria-label="Magyar" title="Magyar">
+            <svg viewBox="0 0 30 20" aria-hidden="true">
+              <rect width="30" height="20" fill="#fff"/>
+              <rect width="30" height="6.667" y="0" fill="#ce2939"/>
+              <rect width="30" height="6.667" y="13.333" fill="#477050"/>
+            </svg>
+          </button>
+          <button class="lang-btn" type="button" data-lang="en" aria-label="English" title="English">
+            <svg viewBox="0 0 60 30" aria-hidden="true">
+              <rect width="60" height="30" fill="#012169"/>
+              <path d="M0 0 L60 30 M60 0 L0 30" stroke="#fff" stroke-width="6"/>
+              <path d="M0 0 L60 30 M60 0 L0 30" stroke="#C8102E" stroke-width="3"/>
+              <path d="M30 0 V30 M0 15 H60" stroke="#fff" stroke-width="10"/>
+              <path d="M30 0 V30 M0 15 H60" stroke="#C8102E" stroke-width="6"/>
+            </svg>
+          </button>
+          <button class="lang-btn" type="button" data-lang="de" aria-label="Deutsch" title="Deutsch">
+            <svg viewBox="0 0 30 20" aria-hidden="true">
+              <rect width="30" height="6.667" y="0" fill="#000"/>
+              <rect width="30" height="6.666" y="6.667" fill="#DD0000"/>
+              <rect width="30" height="6.667" y="13.333" fill="#FFCE00"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="roomline multiplayer-only">
+      <span><span id="status-dot" class="status-dot"></span><span id="connection-text">Connecting…</span></span>
+      <span><span data-i18n="table">Table:</span> <strong id="current-room"></strong></span>
+      <span><span data-i18n="you">You:</span> <strong id="current-player"></strong></span>
+      <span><span data-i18n="yourRole">Role:</span> <strong id="current-role"></strong></span>
+      <span><span data-i18n="host">Host:</span> <strong id="current-host">—</strong></span>
+    </div>
+
+    <div class="presence-groups multiplayer-only">
+      <div>
+        <div class="presence-title" data-i18n="activePlayers">Active players</div>
+        <div id="active-players" class="players"></div>
+      </div>
+      <div>
+        <div class="presence-title" data-i18n="observers">Observers</div>
+        <div id="observers" class="players"></div>
+      </div>
+    </div>
+
+    <div class="timer-panel multiplayer-only">
+      <div class="grow">
+        <span data-i18n="nextCardIn">New card available in:</span>
+        <span class="timer-value" id="next-card-timer">15</span>
+        <span>s</span>
+      </div>
+      <div>
+        <span data-i18n="thinkingPlayers">Thinking:</span>
+        <strong id="thinking-count">0</strong>
+      </div>
+      <div id="set-countdown-wrap" class="hidden">
+        <span data-i18n="setTimeLeft">SET time:</span>
+        <strong id="set-countdown">10</strong>
+        <span>s</span>
+      </div>
+    </div>
+
+    <div id="message" class="message" aria-live="polite"></div>
+
+    <div id="live-set-panel" class="live-set-panel multiplayer-only hidden" aria-live="polite">
+      <div><strong id="live-set-player"></strong><span id="live-set-state"></span></div>
+      <div class="live-set-time"><strong id="live-set-time">0.0</strong> s</div>
+    </div>
+
+    <div id="game-over" class="message hidden" aria-live="polite"></div>
+
+    <div id="game-over-actions" class="game-over-actions hidden">
+      <button id="download-results-btn" type="button" data-i18n="downloadResults">Download results</button>
+      <button id="new-game-btn" class="primary" type="button" data-i18n="newGame">New game</button>
+      <button id="delete-table-btn" class="multiplayer-only" type="button" data-i18n="deleteTable">Close & delete table</button>
+      <span id="new-game-note" class="score-label"></span>
+    </div>
+
+    <div id="game-history" class="history-panel multiplayer-only hidden">
+      <div class="presence-title" data-i18n="historyTitle">Previous games</div>
+      <div id="history-list"></div>
+    </div>
+
+    <div class="card-actions" id="card-actions">
+      <button id="call-set" class="set-action" type="button">SET!</button>
+      <button id="think-btn" class="think-action multiplayer-only" type="button" data-i18n="think">✋ +30 s</button>
+    </div>
+
+    <div id="board" class="board" aria-label="SET cards"></div>
+
+    <div class="help" data-i18n="help">
+      A SET is valid when, for each of the four properties — number, shape, color and fill — the values are either all the same or all different.
+    </div>
+  </section>
+
+  <div id="help-overlay" class="help-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="help-dialog">
+      <div class="help-dialog-header">
+        <h2 id="help-title" data-i18n="helpTitle">Help</h2>
+        <button id="help-close-btn" class="help-close-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="help-content" class="help-content"></div>
+    </div>
+  </div>
+</div>
+
+<script src="github-pages-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(() => {
+  const SUPABASE_URL = 'https://hnsdgobndxjfpflqvuuu.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_4QqO6eYqLYTtXwWMCfCWRw_3DM7dcwM';
+  const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const THINK_MS = 30000;
+  const SET_MS = 10000;
+  const SET_START_MS = 3000;
+  const SET_PRIORITY_MS = 3000;
+  const ROUND_MS = 30000;
+  const AWAY_MS = 60000;
+  const HIDE_MS = 180000;
+
+  const joinScreen = document.getElementById('join-screen');
+  const gameScreen = document.getElementById('game-screen');
+  const multiplayerOnlyEls = [...document.querySelectorAll('.multiplayer-only')];
+  const joinForm = document.getElementById('join-form');
+  const joinButton = document.getElementById('join-button');
+  const joinState = document.getElementById('join-state');
+  const playerNameInput = document.getElementById('player-name');
+  const roomNameInput = document.getElementById('room-name');
+  const roleSelect = document.getElementById('role-select');
+  const modeSelect = document.getElementById('mode-select');
+  const tableFields = document.getElementById('table-fields');
+  const soloInfo = document.getElementById('solo-info');
+
+  const board = document.getElementById('board');
+  const newBtn = document.getElementById('new-card');
+  const setBtn = document.getElementById('call-set');
+  const thinkBtn = document.getElementById('think-btn');
+  const hasSetBtn = document.getElementById('has-set');
+  const leaveBtn = document.getElementById('leave-room');
+  const message = document.getElementById('message');
+  const gameOverEl = document.getElementById('game-over');
+  const gameOverActionsEl = document.getElementById('game-over-actions');
+  const newGameBtn = document.getElementById('new-game-btn');
+  const downloadResultsBtn = document.getElementById('download-results-btn');
+  const deleteTableBtn = document.getElementById('delete-table-btn');
+  const newGameNote = document.getElementById('new-game-note');
+  const gameHistoryEl = document.getElementById('game-history');
+  const historyListEl = document.getElementById('history-list');
+  const myScoreEl = document.getElementById('my-score');
+  const activePlayersEl = document.getElementById('active-players');
+  const observersEl = document.getElementById('observers');
+  const currentRoomEl = document.getElementById('current-room');
+  const currentPlayerEl = document.getElementById('current-player');
+  const currentRoleEl = document.getElementById('current-role');
+  const currentHostEl = document.getElementById('current-host');
+  const copyInviteBtn = document.getElementById('copy-invite-btn');
+  const helpBtn = document.getElementById('help-btn');
+  const helpOverlay = document.getElementById('help-overlay');
+  const helpCloseBtn = document.getElementById('help-close-btn');
+  const helpContent = document.getElementById('help-content');
+  const statusDot = document.getElementById('status-dot');
+  const connectionText = document.getElementById('connection-text');
+  const nextCardTimerEl = document.getElementById('next-card-timer');
+  const thinkingCountEl = document.getElementById('thinking-count');
+  const liveSetPanel = document.getElementById('live-set-panel');
+  const liveSetPlayer = document.getElementById('live-set-player');
+  const liveSetState = document.getElementById('live-set-state');
+  const liveSetTime = document.getElementById('live-set-time');
+  const setCountdownWrap = document.getElementById('set-countdown-wrap');
+  const setCountdownEl = document.getElementById('set-countdown');
+  const langButtons = [...document.querySelectorAll('.lang-btn')];
+
+  const colors = [
+    { value: '#d84a45' },
+    { value: '#2f9c88' },
+    { value: '#7750a7' }
+  ];
+
+  const translations = {
+    hu: {
+      joinIntro: 'Válaszd ki, hogyan szeretnél játszani.',
+      mode: 'Játékmód',
+      modeSolo: 'Egyedül játszom',
+      modeTable: 'Asztalhoz ülök',
+      soloInfo: 'Az egyjátékos mód teljesen a böngészőben fut, és nem használ Supabase-t.',
+      playerName: 'Játékos neve',
+      tableName: 'Asztal neve',
+      role: 'Szerep',
+      rolePlayer: 'Aktív játékos',
+      roleObserver: 'Megfigyelő',
+      start: 'Indítás',
+      join: 'Belépés az asztalhoz',
+      joining: 'Csatlakozás…',
+      invalidNames: 'Adj meg játékosnevet és asztalnevet.',
+      joinError: 'Nem sikerült csatlakozni. Ellenőrizd az internetkapcsolatot és a Supabase beállításait.',
+      newCard: 'Új kártya',
+      hasSet: 'Van SET?',
+      leave: 'Kilépés',
+      think: '✋ +30 mp',
+      stopThinking: '✋ Már nem keresek',
+      myScore: 'Saját SET-ek:',
+      table: 'Asztal:',
+      you: 'Te:',
+      yourRole: 'Szerep:',
+      activePlayers: 'Aktív játékosok',
+      observers: 'Megfigyelők',
+      nextCardIn: 'Új kártya ennyi idő múlva:',
+      thinkingPlayers: 'Gondolkodik:',
+      setTimeLeft: 'SET-idő:',
+      liveSetSelecting: n => `SET-et választ (${n}/3)`,
+      liveSetMustStart: 'SET-et mondott — 3 mp-en belül el kell kezdenie',
+      liveSetPriority: 'helyes SET — 3 mp elsőbbsége van a következő SET-re',
+      liveSetBusy: name => `${name} éppen SET-et választ.`,
+      setStartTimeoutPoint: 'Nem kezdted el 3 másodpercen belül a kijelölést. 1 pont levonva.',
+      setStartTimeoutSkip: 'Nem kezdted el 3 másodpercen belül a kijelölést. Nem volt levonható pontod, ezért a következő körből kimaradsz.',
+      wrongSetPoint: 'Hibás SET. 1 pont levonva.',
+      wrongSetSkip: 'Hibás SET. Nem volt levonható pontod, ezért a következő körből kimaradsz.',
+      wrongSetSoloZero: 'Hibás SET. Nincs levonható pontod.',
+      setTimeoutPoint: 'Lejárt a 10 másodperc. 1 pont levonva.',
+      setTimeoutSkip: 'Lejárt a 10 másodperc. Nem volt levonható pontod, ezért a következő körből kimaradsz.',
+      setTimeoutSoloZero: 'Lejárt a 10 másodperc. Nincs levonható pontod.',
+      skippedRound: 'Ebből a körből kimaradsz.',
+      gameOver: 'Játék vége.',
+      finalScoreSolo: score => `Végeredmény: ${score} SET.`,
+      finalScoresTitle: 'Végeredmény:',
+      winnerSingle: name => `Győztes: ${name}.`,
+      winnerTie: names => `Holtverseny: ${names}.`,
+      newGame: 'Új játék',
+      waitingHost: 'Csak a host indíthat új játékot.',
+      hostAwayRestart: 'A host nincs jelen; átveheted a host szerepet és új játékot indíthatsz.',
+      historyTitle: 'Korábbi játékok',
+      noHistory: 'Még nincs korábbi befejezett játék.',
+      historyWinners: 'Győztes',
+      historyTie: 'Holtverseny',
+      host: 'Host:',
+      downloadResults: 'Eredmények letöltése',
+      deleteTable: 'Asztal lezárása és törlése',
+      deleteConfirm: name => `Biztosan törlöd a(z) „${name}” asztalt és a hozzá tartozó szerveren tárolt eredményeket?`,
+      deleteNotAllowed: 'Csak a host (vagy a már távozott host helyett egy aktív játékos) törölheti az asztalt.',
+      deleteFailed: 'Az asztal törlése nem sikerült.',
+      resultsDownloaded: 'Az eredmények letöltése elkészült.',
+      copyInvite: 'Meghívás',
+      inviteCopied: 'A meghívó link a vágólapra került.',
+      inviteTable: name => `Meghívás a(z) „${name}” asztalhoz.`,
+      inviteCreating: 'Meghívó létrehozása…',
+      inviteNamePrompt: 'Add meg a nevedet a többjátékos módhoz:',
+      inviteCreateError: 'Nem sikerült létrehozni a meghívható asztalt.',
+      inviteRoomPrompt: 'Meghívó asztal neve (a javasolt név szabadon átírható):',
+      inviteRoomInvalid: 'Adj meg egy érvényes asztalnevet.',
+      inviteRoomTaken: 'Ez az asztalnév már foglalt. Adj meg másikat.',
+      online: 'Kapcsolódva',
+      connecting: 'Kapcsolódás…',
+      offline: 'Nincs kapcsolat',
+      intro: 'Nyomd meg a SET! gombot, majd válassz ki három kártyát.',
+      help: 'SET akkor van, ha a négy tulajdonság mindegyikénél — darabszám, forma, szín, kitöltés — az értékek vagy mind azonosak, vagy mind különbözők.',
+      helpTitle: 'Súgó',
+      helpOpen: 'Súgó',
+      helpClose: 'Bezárás',
+      firstSet: 'Előbb nyomd meg a SET! gombot.',
+      chooseMore: n => `SET bemondva — válassz még ${n} kártyát.`,
+      correctAdded: n => `Helyes! Ez egy SET. A 3 lap lekerült, és ${n} új kártya került a helyére.`,
+      correctRemoved: 'Helyes! Ez egy SET. A 3 lap lekerült az asztalról.',
+      correctPriority: 'Helyes SET! +1 pont. A három lap helye üres marad; 3 másodperc elsőbbséged van elkezdeni egy újabb SET-et.',
+      lostRace: 'Ez a SET közben már megváltozott egy másik játékos lépése miatt.',
+      notSet: 'Ez a három kártya nem SET.',
+      setDeclared: 'SET bemondva — válassz ki három kártyát.',
+      setCancelled: 'SET kiválasztás megszakítva.',
+      hasSetYes: 'Igen — van legalább egy SET a kitett kártyák között.',
+      hasSetNo: 'Nincs SET a jelenleg kitett kártyák között.',
+      deckEmpty: 'Elfogyott a pakli.',
+      cardAdded: n => `Új kártya kitéve. Most ${n} kártya van az asztalon.`,
+      updateConflict: 'Közben másik játékos lépett. Az asztal frissült.',
+      waitTimer: 'Még tart a közös gondolkodási idő.',
+      waitHands: 'Valaki még gondolkodási időt kért.',
+      observerBlocked: 'Megfigyelőként ezt a műveletet nem használhatod.',
+      countNames: ['egy', 'kettő', 'három'],
+      shapeNames: ['ovális', 'téglalap', 'hullámos'],
+      fillNames: ['üres', 'mintás', 'teli'],
+      colorNames: ['piros', 'zöld', 'lila']
+    },
+    en: {
+      joinIntro: 'Choose how you want to play.',
+      mode: 'Game mode',
+      modeSolo: 'Play alone',
+      modeTable: 'Join a table',
+      soloInfo: 'Solo mode runs entirely in your browser and does not use Supabase.',
+      playerName: 'Player name',
+      tableName: 'Table name',
+      role: 'Role',
+      rolePlayer: 'Active player',
+      roleObserver: 'Observer',
+      start: 'Start',
+      join: 'Join table',
+      joining: 'Joining…',
+      invalidNames: 'Enter both a player name and a table name.',
+      joinError: 'Could not join. Check your internet connection and Supabase settings.',
+      newCard: 'New card',
+      hasSet: 'Any SET?',
+      leave: 'Leave',
+      think: '✋ +30 s',
+      stopThinking: '✋ Stop thinking',
+      myScore: 'My SETs:',
+      table: 'Table:',
+      you: 'You:',
+      yourRole: 'Role:',
+      activePlayers: 'Active players',
+      observers: 'Observers',
+      nextCardIn: 'New card available in:',
+      thinkingPlayers: 'Thinking:',
+      setTimeLeft: 'SET time:',
+      liveSetSelecting: n => `is selecting a SET (${n}/3)`,
+      liveSetMustStart: 'called SET — must start within 3 s',
+      liveSetPriority: 'correct SET — 3 s priority for the next SET',
+      liveSetBusy: name => `${name} is currently selecting a SET.`,
+      setStartTimeoutPoint: 'You did not start selecting within 3 seconds. 1 point deducted.',
+      setStartTimeoutSkip: 'You did not start selecting within 3 seconds. You had no point to deduct, so you will miss the next round.',
+      wrongSetPoint: 'Wrong SET. 1 point deducted.',
+      wrongSetSkip: 'Wrong SET. You had no point to deduct, so you will miss the next round.',
+      wrongSetSoloZero: 'Wrong SET. You have no point to deduct.',
+      setTimeoutPoint: 'The 10 seconds expired. 1 point deducted.',
+      setTimeoutSkip: 'The 10 seconds expired. You had no point to deduct, so you will miss the next round.',
+      setTimeoutSoloZero: 'The 10 seconds expired. You have no point to deduct.',
+      skippedRound: 'You are sitting out this round.',
+      gameOver: 'Game over.',
+      finalScoreSolo: score => `Final score: ${score} SET${score === 1 ? '' : 's'}.`,
+      finalScoresTitle: 'Final scores:',
+      winnerSingle: name => `Winner: ${name}.`,
+      winnerTie: names => `Tie: ${names}.`,
+      newGame: 'New game',
+      waitingHost: 'Only the host can start a new game.',
+      hostAwayRestart: 'The host is absent; you can take over as host and start a new game.',
+      historyTitle: 'Previous games',
+      noHistory: 'No completed previous games yet.',
+      historyWinners: 'Winner',
+      historyTie: 'Tie',
+      host: 'Host:',
+      downloadResults: 'Download results',
+      deleteTable: 'Close & delete table',
+      deleteConfirm: name => `Delete table “${name}” and its server-stored results?`,
+      deleteNotAllowed: 'Only the host (or an active player after the host has left) can delete the table.',
+      deleteFailed: 'Could not delete the table.',
+      resultsDownloaded: 'Results downloaded.',
+      copyInvite: 'Invite',
+      inviteCopied: 'Invite link copied to the clipboard.',
+      inviteTable: name => `Invitation to table “${name}”.`,
+      inviteCreating: 'Creating invite…',
+      inviteNamePrompt: 'Enter your name for multiplayer:',
+      inviteCreateError: 'Could not create the multiplayer table.',
+      inviteRoomPrompt: 'Invite table name (you can edit the suggested name):',
+      inviteRoomInvalid: 'Enter a valid table name.',
+      inviteRoomTaken: 'This table name is already in use. Choose another.',
+      online: 'Connected',
+      connecting: 'Connecting…',
+      offline: 'Offline',
+      intro: 'Press SET!, then select three cards.',
+      help: 'A SET is valid when, for each of the four properties — number, shape, color and fill — the values are either all the same or all different.',
+      helpTitle: 'Help',
+      helpOpen: 'Help',
+      helpClose: 'Close',
+      firstSet: 'Press the SET! button first.',
+      chooseMore: n => `SET called — select ${n} more card${n === 1 ? '' : 's'}.`,
+      correctAdded: n => `Correct! That is a SET. The 3 cards were removed and ${n} new card${n === 1 ? '' : 's'} added.`,
+      correctRemoved: 'Correct! That is a SET. The 3 cards were removed.',
+      correctPriority: 'Correct SET! +1 point. The three slots stay empty; you have 3 seconds of priority to start another SET.',
+      lostRace: 'That SET changed because another player moved first.',
+      notSet: 'Those three cards are not a SET.',
+      setDeclared: 'SET called — select three cards.',
+      setCancelled: 'SET selection cancelled.',
+      hasSetYes: 'Yes — there is at least one SET among the cards on the table.',
+      hasSetNo: 'There is no SET among the cards currently on the table.',
+      deckEmpty: 'The deck is empty.',
+      cardAdded: n => `New card added. There are now ${n} cards on the table.`,
+      updateConflict: 'Another player moved first. The table has been refreshed.',
+      waitTimer: 'The shared thinking time is still running.',
+      waitHands: 'At least one player is still thinking.',
+      observerBlocked: 'Observers cannot use this action.',
+      countNames: ['one', 'two', 'three'],
+      shapeNames: ['oval', 'rectangle', 'squiggle'],
+      fillNames: ['empty', 'patterned', 'solid'],
+      colorNames: ['red', 'green', 'purple']
+    },
+    de: {
+      joinIntro: 'Wähle, wie du spielen möchtest.',
+      mode: 'Spielmodus',
+      modeSolo: 'Alleine spielen',
+      modeTable: 'An einen Tisch setzen',
+      soloInfo: 'Der Einzelspielermodus läuft vollständig im Browser und verwendet Supabase nicht.',
+      playerName: 'Spielername',
+      tableName: 'Tischname',
+      role: 'Rolle',
+      rolePlayer: 'Aktiver Spieler',
+      roleObserver: 'Beobachter',
+      start: 'Start',
+      join: 'Tisch beitreten',
+      joining: 'Beitritt…',
+      invalidNames: 'Gib einen Spielernamen und einen Tischnamen ein.',
+      joinError: 'Beitritt fehlgeschlagen. Prüfe Internetverbindung und Supabase-Einstellungen.',
+      newCard: 'Neue Karte',
+      hasSet: 'Gibt es ein SET?',
+      leave: 'Verlassen',
+      think: '✋ +30 s',
+      stopThinking: '✋ Nicht mehr suchen',
+      myScore: 'Meine SETs:',
+      table: 'Tisch:',
+      you: 'Du:',
+      yourRole: 'Rolle:',
+      activePlayers: 'Aktive Spieler',
+      observers: 'Beobachter',
+      nextCardIn: 'Neue Karte möglich in:',
+      thinkingPlayers: 'Denken nach:',
+      setTimeLeft: 'SET-Zeit:',
+      liveSetSelecting: n => `wählt ein SET (${n}/3)`,
+      liveSetMustStart: 'hat SET gerufen — muss innerhalb von 3 s beginnen',
+      liveSetPriority: 'richtiges SET — 3 s Vorrang für das nächste SET',
+      liveSetBusy: name => `${name} wählt gerade ein SET.`,
+      setStartTimeoutPoint: 'Du hast nicht innerhalb von 3 Sekunden begonnen. 1 Punkt abgezogen.',
+      setStartTimeoutSkip: 'Du hast nicht innerhalb von 3 Sekunden begonnen. Es gab keinen Punkt zum Abziehen, daher setzt du die nächste Runde aus.',
+      wrongSetPoint: 'Falsches SET. 1 Punkt abgezogen.',
+      wrongSetSkip: 'Falsches SET. Es gab keinen Punkt zum Abziehen, daher setzt du die nächste Runde aus.',
+      wrongSetSoloZero: 'Falsches SET. Es gibt keinen Punkt zum Abziehen.',
+      setTimeoutPoint: 'Die 10 Sekunden sind abgelaufen. 1 Punkt abgezogen.',
+      setTimeoutSkip: 'Die 10 Sekunden sind abgelaufen. Es gab keinen Punkt zum Abziehen, daher setzt du die nächste Runde aus.',
+      setTimeoutSoloZero: 'Die 10 Sekunden sind abgelaufen. Es gibt keinen Punkt zum Abziehen.',
+      skippedRound: 'Du setzt diese Runde aus.',
+      gameOver: 'Spiel beendet.',
+      finalScoreSolo: score => `Endstand: ${score} SET${score === 1 ? '' : 's'}.`,
+      finalScoresTitle: 'Endstand:',
+      winnerSingle: name => `Gewinner: ${name}.`,
+      winnerTie: names => `Gleichstand: ${names}.`,
+      newGame: 'Neues Spiel',
+      waitingHost: 'Nur der Host kann ein neues Spiel starten.',
+      hostAwayRestart: 'Der Host ist nicht anwesend; du kannst die Host-Rolle übernehmen und ein neues Spiel starten.',
+      historyTitle: 'Frühere Spiele',
+      noHistory: 'Noch keine abgeschlossenen früheren Spiele.',
+      historyWinners: 'Gewinner',
+      historyTie: 'Gleichstand',
+      host: 'Host:',
+      downloadResults: 'Ergebnisse herunterladen',
+      deleteTable: 'Tisch schließen und löschen',
+      deleteConfirm: name => `Tisch „${name}“ und die serverseitig gespeicherten Ergebnisse löschen?`,
+      deleteNotAllowed: 'Nur der Host (oder nach dessen Weggang ein aktiver Spieler) kann den Tisch löschen.',
+      deleteFailed: 'Der Tisch konnte nicht gelöscht werden.',
+      resultsDownloaded: 'Ergebnisse wurden heruntergeladen.',
+      copyInvite: 'Einladen',
+      inviteCopied: 'Einladungslink wurde kopiert.',
+      inviteTable: name => `Einladung zum Tisch „${name}“.`,
+      inviteCreating: 'Einladung wird erstellt…',
+      inviteNamePrompt: 'Gib deinen Namen für den Mehrspielermodus ein:',
+      inviteCreateError: 'Der Mehrspieler-Tisch konnte nicht erstellt werden.',
+      inviteRoomPrompt: 'Name des Einladungstisches (der Vorschlag kann geändert werden):',
+      inviteRoomInvalid: 'Gib einen gültigen Tischnamen ein.',
+      inviteRoomTaken: 'Dieser Tischname ist bereits vergeben. Wähle einen anderen.',
+      online: 'Verbunden',
+      connecting: 'Verbindung…',
+      offline: 'Offline',
+      intro: 'Drücke SET! und wähle dann drei Karten aus.',
+      help: 'Ein SET ist gültig, wenn bei jeder der vier Eigenschaften — Anzahl, Form, Farbe und Füllung — die Werte entweder alle gleich oder alle verschieden sind.',
+      helpTitle: 'Hilfe',
+      helpOpen: 'Hilfe',
+      helpClose: 'Schließen',
+      firstSet: 'Drücke zuerst die SET!-Taste.',
+      chooseMore: n => `SET angesagt — wähle noch ${n} Karte${n === 1 ? '' : 'n'} aus.`,
+      correctAdded: n => `Richtig! Das ist ein SET. Die 3 Karten wurden entfernt und ${n} neue Karte${n === 1 ? '' : 'n'} ausgelegt.`,
+      correctRemoved: 'Richtig! Das ist ein SET. Die 3 Karten wurden entfernt.',
+      correctPriority: 'Richtiges SET! +1 Punkt. Die drei Plätze bleiben leer; du hast 3 Sekunden Vorrang, um ein weiteres SET zu beginnen.',
+      lostRace: 'Dieses SET wurde inzwischen durch den Zug eines anderen Spielers verändert.',
+      notSet: 'Diese drei Karten sind kein SET.',
+      setDeclared: 'SET angesagt — wähle drei Karten aus.',
+      setCancelled: 'SET-Auswahl abgebrochen.',
+      hasSetYes: 'Ja — unter den ausliegenden Karten gibt es mindestens ein SET.',
+      hasSetNo: 'Unter den aktuell ausliegenden Karten gibt es kein SET.',
+      deckEmpty: 'Der Kartenstapel ist leer.',
+      cardAdded: n => `Neue Karte ausgelegt. Jetzt liegen ${n} Karten auf dem Tisch.`,
+      updateConflict: 'Ein anderer Spieler war schneller. Der Tisch wurde aktualisiert.',
+      waitTimer: 'Die gemeinsame Denkzeit läuft noch.',
+      waitHands: 'Mindestens ein Spieler denkt noch nach.',
+      observerBlocked: 'Beobachter können diese Aktion nicht verwenden.',
+      countNames: ['eine', 'zwei', 'drei'],
+      shapeNames: ['oval', 'rechteckig', 'wellenförmig'],
+      fillNames: ['leer', 'gemustert', 'voll'],
+      colorNames: ['rot', 'grün', 'lila']
+    }
+  };
+
+  function detectDefaultLanguage() {
+    const saved = localStorage.getItem('set-language');
+    if (saved && translations[saved]) return saved;
+    const lang = (navigator.language || 'en').toLowerCase();
+    if (lang.startsWith('hu')) return 'hu';
+    if (lang.startsWith('de')) return 'de';
+    return 'en';
+  }
+
+  let currentLang = detectDefaultLanguage();
+  let roomName = '';
+  let playerName = '';
+  let role = 'player';
+  let gameMode = 'solo';
+  let roomState = null;
+  let selected = [];
+  let declaringSet = false;
+  let realtimeChannel = null;
+  let presenceChannel = null;
+  let uid = 0;
+  let busy = false;
+  let clientId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  let myPresence = null;
+  let presenceMap = new Map();
+  let timerHandle = null;
+  let activityHandle = null;
+  let setDeadline = 0;
+  let setPenaltyRunning = false;
+  let historyLoadedForVersion = null;
+  let startingNewGame = false;
+  let archivingGameKey = null;
+
+  // P2P multiplayer transport.
+  // Supabase is used only for room discovery/checkpoints and WebRTC signaling.
+  let isHostClient = false;
+  let hostClientId = null;
+  let signalChannel = null;
+  let hostPeer = null;                 // guest -> host RTCPeerConnection
+  let hostDataChannel = null;          // guest -> host DataChannel
+  const peerConnections = new Map();   // host: clientId -> RTCPeerConnection
+  const dataChannels = new Map();      // host: clientId -> RTCDataChannel
+  const pendingIce = new Map();        // peerId -> RTCIceCandidateInit[]
+  const proposalWaiters = new Map();   // proposalId -> {resolve,reject,timer}
+  let proposalSeq = 0;
+  let checkpointTimer = null;
+  let hostHeartbeatTimer = null;
+  let p2pStarted = false;
+  let p2pConnected = false;
+
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  function t(key) { return translations[currentLang][key]; }
+
+  const roomWordA = [
+    'amber','autumn','bright','calm','clever','cosmic','crystal','dancing',
+    'eager','emerald','flying','gentle','golden','happy','hidden','icy',
+    'jolly','kind','lucky','lunar','magic','merry','misty','nimble',
+    'noble','orange','quiet','rapid','royal','silver','soft','solar',
+    'sparkling','spring','steady','sunny','swift','tiny','velvet','violet',
+    'warm','wild','winter','wise','young','blue','green','red','purple',
+    'brave','clear','cool','fresh','grand','light','little','open','pure',
+    'quick','silent','smooth','sweet','urban','vivid'
+  ];
+
+  const roomWordB = [
+    'apple','bamboo','beacon','birch','breeze','brook','canyon','cedar',
+    'cloud','comet','coral','dawn','delta','echo','ember','fern',
+    'field','forest','fox','garden','glade','harbor','hazel','hill',
+    'island','jasmine','lake','leaf','lotus','maple','meadow','moon',
+    'moss','ocean','orchid','otter','pearl','pine','planet','pond',
+    'rain','river','rose','sand','sky','snow','star','stone',
+    'sun','tiger','trail','tree','valley','wave','willow','wind',
+    'wolf','wood','acorn','falcon','lily','robin','sparrow','whale'
+  ];
+
+  const roomWordC = [
+    'bridge','circle','corner','deck','door','gallery','gate','harbor',
+    'house','island','lane','loft','lounge','market','meeting','nest',
+    'park','path','place','plaza','point','room','square','station',
+    'studio','table','terrace','tower','trail','view','village','yard',
+    'arena','bay','camp','cove','garden','grove','hall','haven',
+    'hub','landing','meadow','orchard','pier','ridge','shelter','shore',
+    'space','spring','summit','valley','walk','way','workshop','zone',
+    'court','crossing','field','forum','port','stage','stop','yard'
+  ];
+
+  function secureChoice(list) {
+    if (window.crypto && crypto.getRandomValues) {
+      const value = new Uint32Array(1);
+      crypto.getRandomValues(value);
+      return list[value[0] % list.length];
+    }
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function generateThreeWordRoomName() {
+    return `${secureChoice(roomWordA)}-${secureChoice(roomWordB)}-${secureChoice(roomWordC)}`;
+  }
+
+  async function roomNameIsAvailable(name) {
+    const { data, error } = await db
+      .from('rooms')
+      .select('name')
+      .eq('name', name)
+      .maybeSingle();
+
+    if (error) throw error;
+    return !data;
+  }
+
+  async function chooseInviteRoomName() {
+    let suggestion = generateThreeWordRoomName();
+
+    while (true) {
+      const entered = window.prompt(t('inviteRoomPrompt'), suggestion);
+      if (entered === null) return null;
+
+      const candidate = normalizeRoomName(entered);
+      if (!candidate) {
+        window.alert(t('inviteRoomInvalid'));
+        continue;
+      }
+
+      if (await roomNameIsAvailable(candidate)) return candidate;
+
+      window.alert(t('inviteRoomTaken'));
+      suggestion = generateThreeWordRoomName();
+    }
+  }
+
+  function githubBasePath() {
+    let base = String(window.SET_GITHUB_BASE_PATH || '').trim();
+    if (!base || base === '/') return '';
+    if (!base.startsWith('/')) base = '/' + base;
+    return base.replace(/\/+$/, '');
+  }
+
+  function appRootPath() {
+    return githubBasePath() + '/';
+  }
+
+  function appRootUrl() {
+    const url = new URL(location.origin);
+    url.pathname = appRootPath();
+    url.search = '';
+    url.hash = '';
+    return url;
+  }
+
+  function roomPath(name) {
+    return githubBasePath() + '/' + encodeURIComponent(normalizeRoomName(name));
+  }
+
+  function roomNameFromPath() {
+    const base = githubBasePath();
+    let path = decodeURIComponent(location.pathname || '/');
+
+    if (base && path === base) return '';
+    if (base && path.startsWith(base + '/')) path = path.slice(base.length);
+
+    const parts = path.split('/').filter(Boolean);
+    return parts.length ? normalizeRoomName(parts[0]) : '';
+  }
+
+  function inviteUrlForRoom(name = roomName) {
+    const url = new URL(location.origin);
+    url.pathname = roomPath(name);
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  }
+
+  async function copyInviteLink() {
+    copyInviteBtn.disabled = true;
+    const originalLabel = copyInviteBtn.textContent;
+    copyInviteBtn.textContent = t('inviteCreating');
+
+    try {
+      if (gameMode === 'solo') {
+        let name = localStorage.getItem('set-player-name') || '';
+        if (!name || name === 'Solo') {
+          name = window.prompt(t('inviteNamePrompt'), '') || '';
+        }
+        name = sanitizePlayerName(name);
+        if (!name) return;
+
+        const generatedRoom = await chooseInviteRoomName();
+        if (!generatedRoom) return;
+        const soloScore = playerScore(playerName);
+        const promotedPlayers = {
+          [name]: { score: soloScore, pending_skip: false, skip_token: null }
+        };
+        const nextAllowed = new Date(Date.now() + ROUND_MS).toISOString();
+
+        const { data, error } = await db
+          .from('rooms')
+          .insert({
+            name: generatedRoom,
+            cards: [...(roomState.cards || [])],
+            deck: [...(roomState.deck || [])],
+            players: promotedPlayers,
+            version: Number(roomState.version || 1),
+            next_card_allowed_at: nextAllowed,
+            host_name: name,
+            host_client_id: clientId,
+            has_started: true,
+            last_activity_at: new Date().toISOString(),
+            current_game_started_at: new Date().toISOString()
+          })
+          .select('name,cards,deck,players,version,next_card_allowed_at,host_name,host_client_id,created_at,last_activity_at,has_started,current_game_started_at')
+          .single();
+
+        if (error) throw error;
+
+        // Continue the same game as multiplayer; the current cards and deck are preserved.
+        gameMode = 'table';
+        role = 'player';
+        playerName = name;
+        roomName = generatedRoom;
+        roomState = data;
+        selected = [];
+        declaringSet = false;
+        setDeadline = 0;
+
+        localStorage.setItem('set-player-name', playerName);
+
+        const currentUrl = new URL(location.origin);
+        currentUrl.pathname = roomPath(roomName);
+        history.replaceState({}, '', currentUrl);
+        document.title = `SET — ${roomName}`;
+
+        currentRoomEl.textContent = roomName;
+        currentPlayerEl.textContent = playerName;
+        currentRoleEl.textContent = t('rolePlayer');
+        currentHostEl.textContent = playerName;
+
+        isHostClient = true;
+        hostClientId = clientId;
+        roomState.host_client_id = clientId;
+
+        applyModeUI();
+        await closeP2P();
+        await startHostP2P();
+        startTimerLoop();
+        render();
+      }
+
+      const url = inviteUrlForRoom(roomName);
+
+      try {
+        await navigator.clipboard.writeText(url);
+        message.textContent = `${t('inviteCopied')} ${url}`;
+      } catch {
+        window.prompt(t('copyInvite'), url);
+      }
+    } catch (err) {
+      console.error('invite', err);
+      message.textContent = `${t('inviteCreateError')} ${err?.message || ''}`;
+    } finally {
+      copyInviteBtn.disabled = false;
+      copyInviteBtn.textContent = originalLabel || t('copyInvite');
+    }
+  }
+
+  function applyModeUI() {
+    const solo = gameMode === 'solo';
+    gameScreen.classList.toggle('solo-mode', solo);
+    multiplayerOnlyEls.forEach(el => el.classList.toggle('hidden', solo));
+  }
+
+  const helpHtml = {"hu": "<h3>Alapszabály</h3>\n<ul>\n<li>Egy SET három kártyából áll.</li>\n<li>A négy tulajdonság: darabszám, forma, szín és kitöltés.</li>\n<li>Mind a négy tulajdonságnál a három kártya értéke vagy mind azonos, vagy mind különböző.</li>\n</ul>\n\n<h3>Egyéni játék</h3>\n<ul>\n<li>Az egyéni játék teljesen a böngészőben fut, Supabase nélkül.</li>\n<li>A SET! gomb megnyomása után 10 másodperc van három kártya kijelölésére.</li>\n<li>Helyes SET: +1 pont.</li>\n<li>Hibás SET vagy lejárt 10 másodperc: −1 pont, ha van levonható pont. Nulla pontnál nincs további büntetés.</li>\n<li>Az Új kártya gomb bármikor használható, ha van még lap a pakliban.</li>\n<li>A játék akkor ér véget, ha elfogyott a pakli és a kint lévő lapok között nincs több SET.</li>\n</ul>\n\n<h3>Csoportos játék</h3>\n<ul>\n<li>Minden játékos ugyanazt az asztalt látja, valós időben szinkronizálva.</li>\n<li>Új táblaállapot után 30 másodperc közös gondolkodási idő indul.</li>\n<li>Ezután új kártya csak akkor tehető ki, ha senki sem kér további gondolkodási időt.</li>\n<li>A ✋ +30 mp gombbal 30 másodperc további idő kérhető; a kéz automatikusan lejár, vagy korábban levehető.</li>\n<li>A SET! bemondása után 3 másodpercen belül el kell kezdeni a kijelölést, és 10 másodpercen belül be kell fejezni. A többiek valós időben látják, ki mondta a SET-et, mely lapokat jelöli és mennyi ideje maradt.</li>\n<li>Hibás SET vagy lejárt idő: −1 pont. Ha nincs levonható pont, a játékos a következő körből kimarad. Helyes SET után a három megtalált lap azonnal lekerül, de a helyük üresen marad: a többi lap nem rendeződik át és új lap még nem kerül ki. Ugyanaz a játékos 3 másodperc elsőbbséget kap a következő SET elkezdésére a megmaradt lapok között; ha ezalatt kijelöli az első lapot, 10 másodperce van befejezni. Helyes találattal a sorozat folytatható. Amikor a privilégium lejár, vagy a következő próbálkozás hibás/időtúllépéses, az üres helyeket a pakliból töltjük fel.</li>\n<li>A kimaradó játékos a következő körben nem mondhat SET-et, nem kérhet gondolkodási időt és nem rakhat ki új lapot.</li>\n<li>Megfigyelő láthatja az asztalt és az eredményeket, de nem játszik aktívan.</li>\n</ul>\n\n<h3>Asztalok és meghívás</h3>\n<ul>\n<li>Az asztal URL-je Jitsi-szerű: <code>/asztal-neve</code>.</li>\n<li>Példa: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Ha az asztal létezik, a link megnyitásakor csatlakozol hozzá. Ha nem létezik, az első belépő létrehozza.</li>\n<li>A Meghívás gomb egy háromszavas nevet ajánl fel. A javasolt név szabadon átírható.</li>\n<li>A program ellenőrzi, hogy az asztalnév szabad-e.</li>\n<li>Single játékból meghíváskor az aktuális játékállapot kerül át multiplayer módba; a parti nem indul újra.</li>\n</ul>\n\n<h3>Host és új játék</h3>\n<ul>\n<li>Az első aktív játékos lesz a host.</li>\n<li>Multiplayerben normál esetben a host indíthat új játékot.</li>\n<li>Ha a host már nincs jelen, más aktív játékos átveheti a host szerepet.</li>\n<li>Új játék indításakor a pontok nullázódnak és új pakli készül.</li>\n</ul>\n\n<h3>Eredmények és asztal megszűnése</h3>\n<ul>\n<li>Játék végén az eredmények JSON fájlba letölthetők.</li>\n<li>A host az asztalt kézzel is lezárhatja és törölheti.</li>\n<li>Soha el nem kezdett asztal 24 óra után automatikusan törlődik.</li>\n<li>Már használt asztal 7 nap játék-inaktivitás után automatikusan törlődik.</li>\n<li>Törlés után ugyanaz az asztalnév és URL azonnal újra használható.</li>\n</ul>", "en": "<h3>Basic rule</h3>\n<ul>\n<li>A SET consists of three cards.</li>\n<li>The four properties are number, shape, color and fill.</li>\n<li>For every property, the three values must be either all the same or all different.</li>\n</ul>\n\n<h3>Solo game</h3>\n<ul>\n<li>Solo mode runs entirely in the browser and does not use Supabase.</li>\n<li>After pressing SET!, you have 10 seconds to select three cards.</li>\n<li>Correct SET: +1 point.</li>\n<li>Wrong SET or 10-second timeout: −1 point if possible. At zero points there is no extra penalty.</li>\n<li>New card can be used immediately while cards remain in the deck.</li>\n<li>The game ends when the deck is empty and there is no SET left on the table.</li>\n</ul>\n\n<h3>Multiplayer game</h3>\n<ul>\n<li>All players see the same table, synchronized in real time.</li>\n<li>After a new table state, there is a shared 30-second thinking period.</li>\n<li>After that, a new card may be added only if nobody is still requesting thinking time.</li>\n<li>✋ +30 s requests another 30 seconds. The hand expires automatically or can be lowered early.</li>\n<li>After calling SET!, selection must start within 3 seconds and finish within 10 seconds. Everyone else sees in real time who called SET, which cards are selected and how much time remains.</li>\n<li>Wrong SET or timeout: −1 point. If there is no point to deduct, the player sits out the next round. After a correct SET, the three matched cards disappear immediately but their slots stay empty: the remaining cards do not move and no replacements are dealt yet. The same player gets 3 seconds of priority to start another SET among the remaining cards; selecting the first card in time gives up to 10 seconds to finish it. A correct find can continue the streak. When priority expires, or the next attempt is wrong/times out, the empty slots are refilled from the deck.</li>\n<li>A player sitting out cannot call SET, request thinking time or add a new card during that round.</li>\n<li>An observer can watch the table and scores but cannot actively play.</li>\n</ul>\n\n<h3>Tables and invitations</h3>\n<ul>\n<li>Table URLs use a Jitsi-style path: <code>/table-name</code>.</li>\n<li>Example: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>If the table exists, opening the link joins it. If it does not exist, the first player creates it.</li>\n<li>The Invite button suggests a three-word name. You can freely edit the suggestion.</li>\n<li>The app checks that the chosen table name is available.</li>\n<li>Inviting from a solo game promotes the current game state to multiplayer; the game does not restart.</li>\n</ul>\n\n<h3>Host and new games</h3>\n<ul>\n<li>The first active player becomes the host.</li>\n<li>Normally only the host can start a new multiplayer game.</li>\n<li>If the host is no longer present, another active player can take over.</li>\n<li>Starting a new game resets scores and creates a fresh deck.</li>\n</ul>\n\n<h3>Results and table expiry</h3>\n<ul>\n<li>At game end, results can be downloaded as JSON.</li>\n<li>The host can manually close and delete the table.</li>\n<li>A table that was never played is deleted automatically after 24 hours.</li>\n<li>A table that has been played is deleted after 7 days without game activity.</li>\n<li>After deletion, the same table name and URL can be reused immediately.</li>\n</ul>", "de": "<h3>Grundregel</h3>\n<ul>\n<li>Ein SET besteht aus drei Karten.</li>\n<li>Die vier Eigenschaften sind Anzahl, Form, Farbe und Füllung.</li>\n<li>Bei jeder Eigenschaft müssen die drei Werte entweder alle gleich oder alle verschieden sein.</li>\n</ul>\n\n<h3>Einzelspiel</h3>\n<ul>\n<li>Der Einzelspielermodus läuft vollständig im Browser und verwendet Supabase nicht.</li>\n<li>Nach SET! bleiben 10 Sekunden, um drei Karten auszuwählen.</li>\n<li>Richtiges SET: +1 Punkt.</li>\n<li>Falsches SET oder Ablauf der 10 Sekunden: −1 Punkt, falls möglich. Bei null Punkten gibt es keine weitere Strafe.</li>\n<li>Eine neue Karte kann sofort gelegt werden, solange Karten im Stapel vorhanden sind.</li>\n<li>Das Spiel endet, wenn der Stapel leer ist und kein SET mehr auf dem Tisch liegt.</li>\n</ul>\n\n<h3>Mehrspielermodus</h3>\n<ul>\n<li>Alle Spieler sehen denselben Tisch, in Echtzeit synchronisiert.</li>\n<li>Nach einem neuen Tischzustand beginnt eine gemeinsame Denkzeit von 30 Sekunden.</li>\n<li>Danach darf nur dann eine neue Karte gelegt werden, wenn niemand weitere Denkzeit angefordert hat.</li>\n<li>✋ +30 s fordert weitere 30 Sekunden an. Die Hand läuft automatisch ab oder kann vorher gesenkt werden.</li>\n<li>Nach SET! muss innerhalb von 3 Sekunden mit der Auswahl begonnen und innerhalb von 10 Sekunden abgeschlossen werden. Alle anderen sehen in Echtzeit, wer SET gerufen hat, welche Karten gewählt werden und wie viel Zeit noch bleibt.</li>\n<li>Falsches SET oder Zeitüberschreitung: −1 Punkt. Gibt es keinen Punkt zum Abziehen, setzt der Spieler die nächste Runde aus. Nach einem richtigen SET verschwinden die drei gefundenen Karten sofort, ihre Plätze bleiben jedoch leer: Die übrigen Karten werden nicht verschoben und es werden noch keine Ersatzkarten gelegt. Derselbe Spieler hat 3 Sekunden Vorrang, unter den verbleibenden Karten ein weiteres SET zu beginnen; wird die erste Karte rechtzeitig gewählt, bleiben bis zu 10 Sekunden zum Beenden. Bei einem weiteren richtigen SET kann die Serie fortgesetzt werden. Läuft der Vorrang ab oder ist der nächste Versuch falsch/zu spät, werden die leeren Plätze aus dem Stapel aufgefüllt.</li>\n<li>Wer aussetzt, darf in dieser Runde kein SET ansagen, keine Denkzeit anfordern und keine neue Karte legen.</li>\n<li>Ein Beobachter kann Tisch und Punkte sehen, aber nicht aktiv mitspielen.</li>\n</ul>\n\n<h3>Tische und Einladungen</h3>\n<ul>\n<li>Tisch-URLs verwenden einen Jitsi-ähnlichen Pfad: <code>/tisch-name</code>.</li>\n<li>Beispiel: <code>https://YOUR-USERNAME.github.io/setsetset/golden-river-bridge</code>.</li>\n<li>Existiert der Tisch, tritt man über den Link bei. Existiert er nicht, erstellt ihn der erste Spieler.</li>\n<li>Die Einladen-Schaltfläche schlägt einen Namen aus drei Wörtern vor. Der Vorschlag kann frei geändert werden.</li>\n<li>Die App prüft, ob der gewählte Tischname frei ist.</li>\n<li>Wird aus einem Einzelspiel eingeladen, wird der aktuelle Spielstand in den Mehrspielermodus übernommen; die Partie startet nicht neu.</li>\n</ul>\n\n<h3>Host und neues Spiel</h3>\n<ul>\n<li>Der erste aktive Spieler wird Host.</li>\n<li>Normalerweise kann nur der Host ein neues Mehrspielerspiel starten.</li>\n<li>Ist der Host nicht mehr anwesend, kann ein anderer aktiver Spieler übernehmen.</li>\n<li>Bei einem neuen Spiel werden die Punkte zurückgesetzt und ein neuer Stapel erstellt.</li>\n</ul>\n\n<h3>Ergebnisse und Ablauf von Tischen</h3>\n<ul>\n<li>Am Spielende können die Ergebnisse als JSON heruntergeladen werden.</li>\n<li>Der Host kann den Tisch manuell schließen und löschen.</li>\n<li>Ein nie gestarteter Tisch wird nach 24 Stunden automatisch gelöscht.</li>\n<li>Ein benutzter Tisch wird nach 7 Tagen ohne Spielaktivität automatisch gelöscht.</li>\n<li>Nach dem Löschen kann derselbe Tischname und dieselbe URL sofort wieder verwendet werden.</li>\n</ul>"};
+
+  function renderHelpContent() {
+    helpContent.innerHTML = helpHtml[currentLang] || helpHtml.en;
+    helpBtn.setAttribute('aria-label', t('helpOpen'));
+    helpBtn.title = t('helpOpen');
+    helpCloseBtn.setAttribute('aria-label', t('helpClose'));
+  }
+
+  function openHelp() {
+    renderHelpContent();
+    helpOverlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    helpCloseBtn.focus();
+  }
+
+  function closeHelp() {
+    helpOverlay.classList.add('hidden');
+    document.body.style.overflow = '';
+    helpBtn.focus();
+  }
+
+  function applyLanguage() {
+    document.documentElement.lang = currentLang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const value = translations[currentLang][el.dataset.i18n];
+      if (typeof value === 'string') el.textContent = value;
+    });
+    langButtons.forEach(btn => {
+      const active = btn.dataset.lang === currentLang;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (roomState) render();
+  }
+
+  langButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentLang = btn.dataset.lang;
+      localStorage.setItem('set-language', currentLang);
+      applyLanguage();
+      if (!helpOverlay.classList.contains('hidden')) renderHelpContent();
+      if (roomState) {
+        message.textContent = t('intro');
+        if (isGameOver() && gameMode === 'table') loadGameHistory(true);
+      }
+    });
+  });
+
+  function normalizeRoomName(name) {
+    return name.trim().toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 48);
+  }
+
+  function sanitizePlayerName(name) {
+    return name.trim().replace(/\s+/g, ' ').slice(0, 32);
+  }
+
+  function makeDeck() {
+    const d = [];
+    for (let count = 0; count < 3; count++)
+      for (let shape = 0; shape < 3; shape++)
+        for (let color = 0; color < 3; color++)
+          for (let fill = 0; fill < 3; fill++)
+            d.push(`${count}${shape}${color}${fill}`);
+
+    for (let i = d.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [d[i], d[j]] = [d[j], d[i]];
+    }
+    return d;
+  }
+
+  function newGameState() {
+    const deck = makeDeck();
+    const cards = deck.splice(-12);
+    return {
+      cards,
+      deck,
+      players: {},
+      version: 1,
+      next_card_allowed_at: new Date(Date.now() + ROUND_MS).toISOString()
+    };
+  }
+
+  function cardObj(id) {
+    return {
+      id,
+      count: Number(id[0]),
+      shape: Number(id[1]),
+      color: Number(id[2]),
+      fill: Number(id[3])
+    };
+  }
+
+  function isSet(a, b, c) {
+    for (const key of ['count', 'shape', 'color', 'fill']) {
+      const different = new Set([a[key], b[key], c[key]]).size;
+      if (different === 2) return false;
+    }
+    return true;
+  }
+
+  function findAnySet(cardIds) {
+    const objects = (cardIds || []).filter(Boolean).map(cardObj);
+    for (let i = 0; i < objects.length - 2; i++)
+      for (let j = i + 1; j < objects.length - 1; j++)
+        for (let k = j + 1; k < objects.length; k++)
+          if (isSet(objects[i], objects[j], objects[k])) return [objects[i], objects[j], objects[k]];
+    return null;
+  }
+
+  function removeCardsLeavingHoles(cards, chosenIds) {
+    const chosen = new Set(chosenIds);
+    return (cards || []).map(id => id && chosen.has(id) ? null : id);
+  }
+
+  function fillHolesFromDeck(cards, deck) {
+    const nextCards = [...(cards || [])];
+    const nextDeck = [...(deck || [])];
+    let added = 0;
+    for (let i = 0; i < nextCards.length && nextDeck.length; i++) {
+      if (nextCards[i] == null) {
+        nextCards[i] = nextDeck.pop();
+        added++;
+      }
+    }
+    return { cards: nextCards, deck: nextDeck, added };
+  }
+
+  function hasHoles(cards) {
+    return (cards || []).some(id => id == null);
+  }
+
+  function svgFor(card) {
+    const stroke = colors[card.color].value;
+    const fillId = `pat-${uid++}`;
+    let fill = 'none';
+    let defs = '';
+
+    if (card.fill === 2) fill = stroke;
+    if (card.fill === 1) {
+      defs = `<defs>
+        <pattern id="${fillId}" width="8" height="8" patternUnits="userSpaceOnUse">
+          <path d="M-2 2 L2 -2 M0 8 L8 0 M6 10 L10 6" fill="none" stroke="${stroke}" stroke-width="1.35" stroke-linecap="round" />
+          <path d="M-2 6 L2 10 M0 0 L8 8 M6 -2 L10 2" fill="none" stroke="${stroke}" stroke-width="1.05" stroke-linecap="round" opacity="0.72" />
+        </pattern>
+      </defs>`;
+      fill = `url(#${fillId})`;
+    }
+
+    const ys = card.count === 0 ? [50] : card.count === 1 ? [34, 66] : [22, 50, 78];
+    let body = '';
+    for (const y of ys) {
+      if (card.shape === 0) {
+        body += `<ellipse cx="75" cy="${y}" rx="35" ry="12.5" fill="${fill}" stroke="${stroke}" stroke-width="3" />`;
+      } else if (card.shape === 1) {
+        body += `<rect x="39" y="${y - 11}" width="72" height="22" rx="4" ry="4" fill="${fill}" stroke="${stroke}" stroke-width="3" />`;
+      } else {
+        body += `<path d="M36 ${y + 7}
+          C43 ${y - 9},54 ${y - 15},67 ${y - 10}
+          C80 ${y - 5},86 ${y + 4},98 ${y + 3}
+          C108 ${y + 2},113 ${y - 6},118 ${y - 8}
+          C116 ${y + 8},106 ${y + 15},94 ${y + 13}
+          C80 ${y + 11},72 ${y + 2},61 ${y + 3}
+          C50 ${y + 4},43 ${y + 12},36 ${y + 7} Z"
+          fill="${fill}" stroke="${stroke}" stroke-width="3" stroke-linejoin="round" />`;
+      }
+    }
+    return `<svg viewBox="0 0 150 100" role="img" aria-hidden="true">${defs}${body}</svg>`;
+  }
+
+  function cardDescription(c) {
+    const tr = translations[currentLang];
+    return `${tr.countNames[c.count]} ${tr.colorNames[c.color]} ${tr.fillNames[c.fill]} ${tr.shapeNames[c.shape]}`;
+  }
+
+  function setConnectionStatus(mode) {
+    statusDot.className = 'status-dot' + (mode === 'online' ? ' online' : mode === 'error' ? ' error' : '');
+    connectionText.textContent = mode === 'online' ? t('online') : mode === 'error' ? t('offline') : t('connecting');
+  }
+
+  function safeJsonSend(channel, payload) {
+    if (!channel || channel.readyState !== 'open') return false;
+    try {
+      channel.send(JSON.stringify(payload));
+      return true;
+    } catch (err) {
+      console.error('P2P send', err);
+      return false;
+    }
+  }
+
+  function broadcastP2P(payload, exceptClientId = null) {
+    if (!isHostClient) return;
+    for (const [peerId, channel] of dataChannels.entries()) {
+      if (peerId === exceptClientId) continue;
+      safeJsonSend(channel, payload);
+    }
+  }
+
+  function snapshotPresenceForWire() {
+    return [...presenceMap.values()];
+  }
+
+  function broadcastPresenceSnapshot() {
+    if (!isHostClient) return;
+    broadcastP2P({
+      type: 'presence_snapshot',
+      entries: snapshotPresenceForWire()
+    });
+  }
+
+  function broadcastGameState() {
+    if (!isHostClient || !roomState) return;
+    broadcastP2P({
+      type: 'game_state',
+      state: roomState
+    });
+  }
+
+  async function insertSignal(toClient, kind, payload) {
+    const { error } = await db.from('rtc_signals').insert({
+      room_name: roomName,
+      from_client: clientId,
+      to_client: toClient,
+      kind,
+      payload
+    });
+    if (error) throw error;
+  }
+
+  async function deleteSignal(id) {
+    if (!id) return;
+    try {
+      await db.from('rtc_signals').delete().eq('id', id);
+    } catch {}
+  }
+
+  async function flushPendingIce(peerId, pc) {
+    const queued = pendingIce.get(peerId) || [];
+    pendingIce.delete(peerId);
+    for (const candidate of queued) {
+      try { await pc.addIceCandidate(candidate); } catch (err) { console.warn('ICE', err); }
+    }
+  }
+
+  function queueOrAddIce(peerId, pc, candidate) {
+    if (!candidate) return;
+    if (pc?.remoteDescription) {
+      pc.addIceCandidate(candidate).catch(err => console.warn('ICE', err));
+    } else {
+      const q = pendingIce.get(peerId) || [];
+      q.push(candidate);
+      pendingIce.set(peerId, q);
+    }
+  }
+
+  function setupHostDataChannel(peerId, channel) {
+    dataChannels.set(peerId, channel);
+
+    channel.onopen = () => {
+      setConnectionStatus('online');
+      p2pConnected = true;
+      // The guest sends hello as soon as its side opens.
+    };
+
+    channel.onmessage = event => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleHostP2PMessage(peerId, msg);
+      } catch (err) {
+        console.error('P2P host message', err);
+      }
+    };
+
+    channel.onclose = () => {
+      dataChannels.delete(peerId);
+      peerConnections.delete(peerId);
+      const old = presenceMap.get(peerId);
+      if (old) {
+        presenceMap.delete(peerId);
+        broadcastPresenceSnapshot();
+        render();
+      }
+    };
+  }
+
+  function setupGuestDataChannel(channel) {
+    hostDataChannel = channel;
+
+    channel.onopen = () => {
+      p2pConnected = true;
+      setConnectionStatus('online');
+
+      safeJsonSend(channel, {
+        type: 'hello',
+        client_id: clientId,
+        name: playerName,
+        role,
+        presence: myPresence || {
+          client_id: clientId,
+          name: playerName,
+          role,
+          last_activity: Date.now(),
+          thinking_until: 0,
+          round_token: roomState?.next_card_allowed_at || null,
+          ...emptyClaimPatch()
+        }
+      });
+
+      // Guest signaling is needed only until the direct WebRTC connection is open.
+      if (signalChannel) {
+        db.removeChannel(signalChannel);
+        signalChannel = null;
+      }
+    };
+
+    channel.onmessage = event => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleGuestP2PMessage(msg);
+      } catch (err) {
+        console.error('P2P guest message', err);
+      }
+    };
+
+    channel.onclose = () => {
+      p2pConnected = false;
+      setConnectionStatus('error');
+      setTimeout(() => attemptHostTakeover(), 3000);
+    };
+  }
+
+  async function handleHostP2PMessage(peerId, msg) {
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'hello') {
+      const p = {
+        ...(msg.presence || {}),
+        client_id: peerId,
+        name: String(msg.name || msg.presence?.name || 'Player').slice(0, 32),
+        role: msg.role === 'observer' ? 'observer' : 'player',
+        last_activity: Date.now()
+      };
+      presenceMap.set(peerId, p);
+
+      if (p.role === 'player' && !Object.prototype.hasOwnProperty.call(roomState.players || {}, p.name)) {
+        roomState.players = {
+          ...(roomState.players || {}),
+          [p.name]: { score: 0, pending_skip: false, skip_token: null }
+        };
+        roomState.version = Number(roomState.version || 0) + 1;
+        scheduleRoomCheckpoint();
+      }
+
+      const ch = dataChannels.get(peerId);
+      safeJsonSend(ch, {
+        type: 'snapshot',
+        state: roomState,
+        presence: snapshotPresenceForWire(),
+        host_client_id: clientId
+      });
+      broadcastPresenceSnapshot();
+      broadcastGameState();
+      render();
+      return;
+    }
+
+    if (msg.type === 'presence_update') {
+      const previous = presenceMap.get(peerId) || {};
+      presenceMap.set(peerId, {
+        ...previous,
+        ...(msg.presence || {}),
+        client_id: peerId,
+        last_activity: Number(msg.presence?.last_activity || Date.now())
+      });
+      broadcastPresenceSnapshot();
+      render();
+      return;
+    }
+
+    if (msg.type === 'state_proposal') {
+      const ch = dataChannels.get(peerId);
+      const baseVersion = Number(msg.base_version);
+      if (baseVersion !== Number(roomState?.version || 0)) {
+        safeJsonSend(ch, {
+          type: 'proposal_result',
+          proposal_id: msg.proposal_id,
+          ok: false,
+          reason: 'conflict',
+          state: roomState
+        });
+        return;
+      }
+
+      const proposed = msg.state || {};
+      // Host is the ordering authority. The proposal is accepted only against
+      // the exact current version, then the host stamps the next version.
+      roomState = {
+        ...roomState,
+        cards: Array.isArray(proposed.cards) ? proposed.cards : roomState.cards,
+        deck: Array.isArray(proposed.deck) ? proposed.deck : roomState.deck,
+        players: proposed.players && typeof proposed.players === 'object' ? proposed.players : roomState.players,
+        next_card_allowed_at: proposed.next_card_allowed_at ?? roomState.next_card_allowed_at,
+        host_name: roomState.host_name,
+        host_client_id: clientId,
+        has_started: !!proposed.has_started,
+        current_game_started_at: proposed.current_game_started_at || roomState.current_game_started_at,
+        last_activity_at: new Date().toISOString(),
+        version: baseVersion + 1
+      };
+
+      scheduleRoomCheckpoint();
+      broadcastGameState();
+
+      safeJsonSend(ch, {
+        type: 'proposal_result',
+        proposal_id: msg.proposal_id,
+        ok: true,
+        state: roomState,
+        meta: msg.meta || {}
+      });
+      render();
+      return;
+    }
+
+    // Optional future visible chat can use this same hidden transport.
+    if (msg.type === 'chat') {
+      broadcastP2P({type:'chat', from: peerId, name: msg.name || '', text: String(msg.text || '').slice(0, 500)});
+    }
+  }
+
+  function handleGuestP2PMessage(msg) {
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'snapshot') {
+      roomState = msg.state || roomState;
+      hostClientId = msg.host_client_id || hostClientId;
+      const map = new Map();
+      for (const p of msg.presence || []) {
+        if (p?.client_id) map.set(p.client_id, p);
+      }
+      presenceMap = map;
+      render();
+      return;
+    }
+
+    if (msg.type === 'presence_snapshot') {
+      const map = new Map();
+      for (const p of msg.entries || []) {
+        if (p?.client_id) map.set(p.client_id, p);
+      }
+      presenceMap = map;
+      render();
+      return;
+    }
+
+    if (msg.type === 'game_state') {
+      roomState = msg.state || roomState;
+      selected = selected.filter(id => (roomState.cards || []).includes(id));
+      render();
+      return;
+    }
+
+    if (msg.type === 'proposal_result') {
+      if (msg.state) roomState = msg.state;
+      const waiter = proposalWaiters.get(msg.proposal_id);
+      if (waiter) {
+        clearTimeout(waiter.timer);
+        proposalWaiters.delete(msg.proposal_id);
+        waiter.resolve({
+          ok: !!msg.ok,
+          reason: msg.reason,
+          state: msg.state,
+          meta: msg.meta || {}
+        });
+      }
+      render();
+      return;
+    }
+  }
+
+  async function createHostPeerForOffer(peerId, offer) {
+    let pc = peerConnections.get(peerId);
+    if (pc) {
+      try { pc.close(); } catch {}
+    }
+
+    pc = new RTCPeerConnection(RTC_CONFIG);
+    peerConnections.set(peerId, pc);
+
+    pc.ondatachannel = event => setupHostDataChannel(peerId, event.channel);
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        insertSignal(peerId, 'ice', event.candidate.toJSON()).catch(console.error);
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (['failed','closed'].includes(pc.connectionState)) {
+        const ch = dataChannels.get(peerId);
+        try { ch?.close(); } catch {}
+        dataChannels.delete(peerId);
+        peerConnections.delete(peerId);
+      }
+    };
+
+    await pc.setRemoteDescription(offer);
+    await flushPendingIce(peerId, pc);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await insertSignal(peerId, 'answer', pc.localDescription.toJSON());
+  }
+
+  async function handleSignalRow(row) {
+    if (!row || row.room_name !== roomName || row.from_client === clientId) return;
+    if (row.to_client && row.to_client !== clientId) return;
+
+    try {
+      if (isHostClient) {
+        if (row.kind === 'offer') {
+          await createHostPeerForOffer(row.from_client, row.payload);
+        } else if (row.kind === 'ice') {
+          const pc = peerConnections.get(row.from_client);
+          queueOrAddIce(row.from_client, pc, row.payload);
+        }
+      } else {
+        if (row.from_client !== hostClientId) return;
+        if (row.kind === 'answer' && hostPeer) {
+          await hostPeer.setRemoteDescription(row.payload);
+          await flushPendingIce(hostClientId, hostPeer);
+        } else if (row.kind === 'ice') {
+          queueOrAddIce(hostClientId, hostPeer, row.payload);
+        }
+      }
+    } finally {
+      deleteSignal(row.id);
+    }
+  }
+
+  async function subscribeSignaling() {
+    if (signalChannel) {
+      await db.removeChannel(signalChannel);
+      signalChannel = null;
+    }
+
+    signalChannel = db
+      .channel(`rtc-signals-${roomName}-${clientId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'rtc_signals',
+        filter: `room_name=eq.${roomName}`
+      }, payload => handleSignalRow(payload.new))
+      .subscribe();
+  }
+
+  async function startHostP2P() {
+    isHostClient = true;
+    hostClientId = clientId;
+    p2pStarted = true;
+    p2pConnected = true;
+
+    myPresence = {
+      client_id: clientId,
+      name: playerName,
+      role,
+      last_activity: Date.now(),
+      thinking_until: 0,
+      round_token: roomState?.next_card_allowed_at || null,
+      ...emptyClaimPatch()
+    };
+    presenceMap.set(clientId, myPresence);
+
+    await subscribeSignaling();
+    setConnectionStatus('online');
+    startHostHeartbeat();
+    render();
+  }
+
+  async function startGuestP2P() {
+    isHostClient = false;
+    p2pStarted = true;
+    p2pConnected = false;
+    setConnectionStatus('connecting');
+
+    await subscribeSignaling();
+
+    hostPeer = new RTCPeerConnection(RTC_CONFIG);
+    const channel = hostPeer.createDataChannel('set-table', { ordered: true });
+    setupGuestDataChannel(channel);
+
+    hostPeer.onicecandidate = event => {
+      if (event.candidate) {
+        insertSignal(hostClientId, 'ice', event.candidate.toJSON()).catch(console.error);
+      }
+    };
+
+    hostPeer.onconnectionstatechange = () => {
+      if (['failed','closed','disconnected'].includes(hostPeer.connectionState)) {
+        p2pConnected = false;
+        setConnectionStatus('error');
+      }
+    };
+
+    const offer = await hostPeer.createOffer();
+    await hostPeer.setLocalDescription(offer);
+    await insertSignal(hostClientId, 'offer', hostPeer.localDescription.toJSON());
+  }
+
+  async function closeP2P() {
+    p2pStarted = false;
+    p2pConnected = false;
+
+    if (signalChannel) {
+      await db.removeChannel(signalChannel);
+      signalChannel = null;
+    }
+
+    if (hostDataChannel) {
+      try { hostDataChannel.close(); } catch {}
+      hostDataChannel = null;
+    }
+    if (hostPeer) {
+      try { hostPeer.close(); } catch {}
+      hostPeer = null;
+    }
+
+    for (const ch of dataChannels.values()) {
+      try { ch.close(); } catch {}
+    }
+    dataChannels.clear();
+
+    for (const pc of peerConnections.values()) {
+      try { pc.close(); } catch {}
+    }
+    peerConnections.clear();
+
+    stopHostHeartbeat();
+  }
+
+  function startHostHeartbeat() {
+    stopHostHeartbeat();
+    hostHeartbeatTimer = setInterval(() => {
+      if (!isHostClient || gameMode !== 'table' || !roomName) return;
+      db.from('rooms').update({
+        host_client_id: clientId,
+        host_name: playerName,
+        last_activity_at: new Date().toISOString()
+      }).eq('name', roomName).then(() => {});
+    }, 60000);
+  }
+
+  function stopHostHeartbeat() {
+    if (hostHeartbeatTimer) clearInterval(hostHeartbeatTimer);
+    hostHeartbeatTimer = null;
+  }
+
+  function scheduleRoomCheckpoint() {
+    if (!isHostClient || gameMode !== 'table' || !roomState) return;
+    if (checkpointTimer) clearTimeout(checkpointTimer);
+    checkpointTimer = setTimeout(checkpointRoomState, 800);
+  }
+
+  async function checkpointRoomState() {
+    checkpointTimer = null;
+    if (!isHostClient || !roomState) return;
+
+    const { error } = await db.from('rooms').update({
+      cards: roomState.cards,
+      deck: roomState.deck,
+      players: roomState.players,
+      version: roomState.version,
+      next_card_allowed_at: roomState.next_card_allowed_at,
+      host_name: playerName,
+      host_client_id: clientId,
+      last_activity_at: new Date().toISOString(),
+      has_started: !!roomState.has_started,
+      current_game_started_at: roomState.current_game_started_at || new Date().toISOString()
+    }).eq('name', roomName);
+
+    if (error) console.error('checkpoint', error);
+  }
+
+  async function attemptHostTakeover() {
+    if (gameMode !== 'table' || isHostClient || !roomName) return;
+
+    const oldHost = hostClientId;
+    try {
+      const { data, error } = await db
+        .from('rooms')
+        .update({
+          host_client_id: clientId,
+          host_name: playerName,
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('name', roomName)
+        .eq('host_client_id', oldHost)
+        .select('name,host_client_id,host_name')
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data?.host_client_id === clientId) {
+        if (roomState) {
+          roomState.host_client_id = clientId;
+          roomState.host_name = playerName;
+        }
+        await closeP2P();
+        await startHostP2P();
+        scheduleRoomCheckpoint();
+        message.textContent = 'Host migrated.';
+        return;
+      }
+
+      const latest = await fetchRoom();
+      hostClientId = latest?.host_client_id || null;
+      if (hostClientId && hostClientId !== clientId) {
+        await closeP2P();
+        await startGuestP2P();
+      }
+    } catch (err) {
+      console.error('host takeover', err);
+    }
+  }
+
+  function emptyClaimPatch() {
+    return { claim_state:null, claim_started_at:0, claim_first_at:0,
+      claim_deadline:0, claim_priority_until:0, claim_selected:[] };
+  }
+
+  function claimFromPresence(p) {
+    if (!p || !p.claim_state) return null;
+    const now=Date.now();
+    if (p.claim_state==='priority') {
+      const until=Number(p.claim_priority_until||0);
+      if (until<=now) return null;
+      return {state:'priority',client_id:p.client_id,name:p.name,selected:[],priority_until:until,started_at:Number(p.claim_started_at||0)};
+    }
+    if (p.claim_state==='selecting') {
+      const selected=Array.isArray(p.claim_selected)?p.claim_selected:[];
+      const started=Number(p.claim_started_at||0), first=Number(p.claim_first_at||0), deadline=Number(p.claim_deadline||0);
+      const start_deadline=started+SET_START_MS;
+      if (!first && start_deadline<=now) return null;
+      if (first && deadline<=now) return null;
+      return {state:'selecting',client_id:p.client_id,name:p.name,selected,started_at:started,first_at:first,start_deadline,deadline};
+    }
+    return null;
+  }
+
+  function currentLiveClaim() {
+    const claims=visiblePresenceEntries().map(claimFromPresence).filter(Boolean);
+    if (!claims.length) return null;
+    claims.sort((a,b)=>{
+      if (a.state==='priority' && b.state!=='priority') return -1;
+      if (b.state==='priority' && a.state!=='priority') return 1;
+      const ta=a.state==='priority'?a.priority_until:a.started_at;
+      const tb=b.state==='priority'?b.priority_until:b.started_at;
+      return ta!==tb?ta-tb:String(a.client_id).localeCompare(String(b.client_id));
+    });
+    return claims[0];
+  }
+
+  async function clearClaimPresence() {
+    if (gameMode!=='table') return;
+    await updatePresence(emptyClaimPatch());
+  }
+
+  function renderLiveClaim() {
+    if (gameMode!=='table') { liveSetPanel.classList.add('hidden'); return; }
+    const c=currentLiveClaim();
+    if (!c) { liveSetPanel.classList.add('hidden'); return; }
+    liveSetPanel.classList.remove('hidden');
+    liveSetPlayer.textContent=c.name;
+    let remain=0;
+    if (c.state==='priority') {
+      liveSetState.textContent=' — '+t('liveSetPriority');
+      remain=Math.max(0,c.priority_until-Date.now());
+    } else if (c.selected.length===0) {
+      liveSetState.textContent=' — '+t('liveSetMustStart');
+      remain=Math.max(0,c.start_deadline-Date.now());
+    } else {
+      liveSetState.textContent=' — '+t('liveSetSelecting')(c.selected.length);
+      remain=Math.max(0,c.deadline-Date.now());
+    }
+    liveSetTime.textContent=(remain/1000).toFixed(1);
+  }
+
+  function parsePresenceState(state) {
+    const map = new Map();
+    Object.values(state || {}).flat().forEach(p => {
+      if (!p || !p.client_id) return;
+      const old = map.get(p.client_id);
+      if (!old || Number(p.last_activity || 0) >= Number(old.last_activity || 0)) map.set(p.client_id, p);
+    });
+    presenceMap = map;
+  }
+
+  function visiblePresenceEntries() {
+    const now = Date.now();
+    return [...presenceMap.values()].filter(p => now - Number(p.last_activity || 0) < HIDE_MS);
+  }
+
+  function isThinking(p) {
+    if (!p || p.role !== 'player' || Number(p.thinking_until || 0) <= Date.now()) return false;
+    if (gameMode === 'table') {
+      if (isPlayerSkipped(p.name)) return false;
+      if ((p.round_token || null) !== (roomState?.next_card_allowed_at || null)) return false;
+    }
+    return true;
+  }
+
+  function anyThinking() {
+    return visiblePresenceEntries().some(isThinking);
+  }
+
+  function normalizePlayerEntry(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return {
+        score: Number(value.score || 0),
+        pending_skip: !!value.pending_skip,
+        skip_token: value.skip_token || null
+      };
+    }
+    return {
+      score: Number(value || 0),
+      pending_skip: false,
+      skip_token: null
+    };
+  }
+
+  function playerScore(name, players = roomState?.players || {}) {
+    return normalizePlayerEntry(players[name]).score;
+  }
+
+  function isPlayerSkipped(name, state = roomState) {
+    if (gameMode !== 'table' || !state) return false;
+    const entry = normalizePlayerEntry(state.players?.[name]);
+    return !!entry.skip_token && entry.skip_token === state.next_card_allowed_at;
+  }
+
+  function advanceRoundPenalties(players, newToken) {
+    const out = {};
+    for (const [name, raw] of Object.entries(players || {})) {
+      const entry = normalizePlayerEntry(raw);
+      if (entry.pending_skip) {
+        entry.pending_skip = false;
+        entry.skip_token = newToken;
+      } else if (entry.skip_token) {
+        entry.skip_token = null;
+      }
+      out[name] = entry;
+    }
+    return out;
+  }
+
+  function renderPresence() {
+    activePlayersEl.innerHTML = '';
+    observersEl.innerHTML = '';
+    const now = Date.now();
+
+    const entries = visiblePresenceEntries().sort((a,b) => String(a.name).localeCompare(String(b.name)));
+
+    entries.forEach(p => {
+      const el = document.createElement('span');
+      const away = now - Number(p.last_activity || 0) >= AWAY_MS;
+      const thinking = isThinking(p);
+      el.className = 'player-chip' + (p.client_id === clientId ? ' me' : '') + (thinking ? ' thinking' : '') + (away ? ' away' : '');
+      const score = playerScore(p.name);
+      const skipped = isPlayerSkipped(p.name);
+      const remain = thinking ? Math.max(0, Math.ceil((Number(p.thinking_until) - now)/1000)) : 0;
+      const stateText = skipped ? ' ⏸' : thinking ? ` ✋ ${remain}s` : away ? ' Zzz' : ' ●';
+      el.textContent = `${p.name}: ${score}${stateText}`;
+
+      if (p.role === 'observer') observersEl.appendChild(el);
+      else activePlayersEl.appendChild(el);
+    });
+
+    thinkingCountEl.textContent = String(entries.filter(isThinking).length);
+    myScoreEl.textContent = String(playerScore(playerName));
+  }
+
+  function nextCardRemainingMs() {
+    if (!roomState?.next_card_allowed_at) return 0;
+    return Math.max(0, new Date(roomState.next_card_allowed_at).getTime() - Date.now());
+  }
+
+  function canAddCard() {
+    if (role !== 'player') return false;
+    if (isPlayerSkipped(playerName)) return false;
+    if (gameMode === 'solo') return !!roomState?.deck?.length;
+    return nextCardRemainingMs() <= 0 && !anyThinking() && !!roomState?.deck?.length;
+  }
+
+  function renderTimers() {
+    const ms = nextCardRemainingMs();
+    nextCardTimerEl.textContent = String(Math.ceil(ms / 1000));
+    thinkBtn.textContent = (myPresence && isThinking(myPresence)) ? t('stopThinking') : t('think');
+
+    const skipped = isPlayerSkipped(playerName);
+    const over = isGameOver();
+    const liveClaim = currentLiveClaim();
+    const otherOwnsClaim = !!liveClaim && liveClaim.client_id !== clientId;
+    newBtn.disabled = over || busy || !canAddCard() || !!liveClaim;
+    setBtn.disabled = over || busy || role !== 'player' || skipped || otherOwnsClaim || (!!liveClaim && liveClaim.client_id === clientId && liveClaim.state === 'priority');
+    thinkBtn.disabled = over || busy || role !== 'player' || skipped || !!liveClaim;
+    hasSetBtn.disabled = over || busy;
+
+    if (declaringSet && setDeadline > 0) {
+      const remain = Math.max(0, Math.ceil((setDeadline - Date.now()) / 1000));
+      setCountdownWrap.classList.remove('hidden');
+      setCountdownEl.textContent = String(remain);
+    } else {
+      setCountdownWrap.classList.add('hidden');
+    }
+
+    renderPresence();
+    renderLiveClaim();
+  }
+
+  function activePresenceNames() {
+    return new Set(visiblePresenceEntries().map(p => p.name));
+  }
+
+  function hostIsPresent() {
+    if (gameMode !== 'table' || !roomState?.host_name) return false;
+    return activePresenceNames().has(roomState.host_name);
+  }
+
+  function canStartNewGame() {
+    if (!isGameOver()) return false;
+    if (gameMode === 'solo') return true;
+    if (role !== 'player') return false;
+    return roomState?.host_name === playerName || !hostIsPresent();
+  }
+
+  function scoreSnapshot() {
+    const out = {};
+    for (const [name, raw] of Object.entries(roomState?.players || {})) {
+      out[name] = normalizePlayerEntry(raw).score;
+    }
+    return out;
+  }
+
+  function winnerNamesFromScores(scores) {
+    const entries = Object.entries(scores || {});
+    if (!entries.length) return [];
+    const max = Math.max(...entries.map(([,score]) => Number(score || 0)));
+    return entries.filter(([,score]) => Number(score || 0) === max).map(([name]) => name);
+  }
+
+  async function loadGameHistory(force = false) {
+    if (gameMode !== 'table' || !roomName) return;
+    if (!force && historyLoadedForVersion === roomState?.version) return;
+
+    const { data, error } = await db
+      .from('game_results')
+      .select('id,finished_at,scores,winners')
+      .eq('room_name', roomName)
+      .order('finished_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.error('history', error);
+      return;
+    }
+
+    historyLoadedForVersion = roomState?.version ?? null;
+    historyListEl.innerHTML = '';
+
+    if (!data || data.length === 0) {
+      historyListEl.textContent = t('noHistory');
+      return;
+    }
+
+    data.forEach((row, index) => {
+      const div = document.createElement('div');
+      div.className = 'history-row';
+
+      const winners = Array.isArray(row.winners) ? row.winners : [];
+      const scores = row.scores && typeof row.scores === 'object' ? row.scores : {};
+      const result = winners.length === 1
+        ? `${t('historyWinners')}: ${winners[0]}`
+        : `${t('historyTie')}: ${winners.join(', ')}`;
+
+      const scoreLine = Object.entries(scores)
+        .sort((a,b) => Number(b[1]) - Number(a[1]) || a[0].localeCompare(b[0]))
+        .map(([name,score]) => `${name}: ${score}`)
+        .join(' · ');
+
+      div.innerHTML = `<span>${result}</span><span class="history-result">${scoreLine}</span>`;
+      historyListEl.appendChild(div);
+    });
+  }
+
+  async function archiveCurrentGame() {
+    if (gameMode !== 'table' || !roomState || !isGameOver()) return;
+
+    const scores = scoreSnapshot();
+    const winners = winnerNamesFromScores(scores);
+
+    const { error } = await db
+      .from('game_results')
+      .upsert({
+        room_name: roomName,
+        finished_version: Number(roomState.version || 0),
+        started_at: roomState.current_game_started_at || roomState.created_at || new Date().toISOString(),
+        scores,
+        winners
+      }, {
+        onConflict: 'room_name,finished_version',
+        ignoreDuplicates: true
+      });
+
+    if (error) throw error;
+  }
+
+  async function ensureCurrentGameArchived() {
+    if (gameMode !== 'table' || !isGameOver()) return;
+    const key = `${roomName}:${roomState?.version || 0}`;
+    if (archivingGameKey === key) return;
+
+    archivingGameKey = key;
+    try {
+      await archiveCurrentGame();
+      historyLoadedForVersion = null;
+    } catch (err) {
+      console.error('archive game', err);
+    } finally {
+      archivingGameKey = null;
+    }
+  }
+
+  function resetPlayerScores(players) {
+    const out = {};
+    for (const name of Object.keys(players || {})) {
+      out[name] = { score: 0, pending_skip: false, skip_token: null };
+    }
+    return out;
+  }
+
+  function downloadBlob(filename, contents, type = 'application/json') {
+    const blob = new Blob([contents], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function downloadResults() {
+    try {
+      if (gameMode === 'solo') {
+        const payload = {
+          format: 'set-game-results-v1',
+          mode: 'solo',
+          exported_at: new Date().toISOString(),
+          games: [{
+            scores: { [playerName]: playerScore(playerName) },
+            winners: [playerName]
+          }]
+        };
+        const date = new Date().toISOString().slice(0, 10);
+        downloadBlob(`set-solo-${date}.json`, JSON.stringify(payload, null, 2));
+        message.textContent = t('resultsDownloaded');
+        return;
+      }
+
+      await ensureCurrentGameArchived();
+
+      const { data, error } = await db
+        .from('game_results')
+        .select('finished_version,started_at,finished_at,scores,winners')
+        .eq('room_name', roomName)
+        .order('finished_at', { ascending: true });
+
+      if (error) throw error;
+
+      const payload = {
+        format: 'set-table-results-v1',
+        table: roomName,
+        exported_at: new Date().toISOString(),
+        games: (data || []).map((row, index) => ({
+          game: index + 1,
+          started_at: row.started_at,
+          finished_at: row.finished_at,
+          scores: row.scores || {},
+          winners: Array.isArray(row.winners) ? row.winners : []
+        }))
+      };
+
+      const date = new Date().toISOString().slice(0, 10);
+      downloadBlob(`set-${roomName}-${date}.json`, JSON.stringify(payload, null, 2));
+      message.textContent = t('resultsDownloaded');
+    } catch (err) {
+      console.error('download results', err);
+      message.textContent = `${t('joinError')} ${err?.message || ''}`;
+    }
+  }
+
+  async function deleteCurrentTable() {
+    if (gameMode !== 'table' || !roomName) return;
+
+    if (!canStartNewGame()) {
+      message.textContent = t('deleteNotAllowed');
+      return;
+    }
+
+    if (!window.confirm(t('deleteConfirm')(roomName))) return;
+
+    try {
+      await ensureCurrentGameArchived();
+
+      const { error: resultError } = await db
+        .from('game_results')
+        .delete()
+        .eq('room_name', roomName);
+      if (resultError) throw resultError;
+
+      const { error: roomError } = await db
+        .from('rooms')
+        .delete()
+        .eq('name', roomName);
+      if (roomError) throw roomError;
+
+      await closeP2P();
+
+      stopTimerLoop();
+      roomState = null;
+      selected = [];
+      declaringSet = false;
+      setDeadline = 0;
+      historyLoadedForVersion = null;
+      roomName = '';
+
+      const url = appRootUrl();
+      history.replaceState({}, '', url);
+      document.title = 'SET Multiplayer';
+
+      gameScreen.classList.add('hidden');
+      joinScreen.classList.remove('hidden');
+      gameScreen.classList.remove('solo-mode');
+      setConnectionStatus('connecting');
+    } catch (err) {
+      console.error('delete table', err);
+      message.textContent = `${t('deleteFailed')} ${err?.message || ''}`;
+    }
+  }
+
+  async function startNewGame() {
+    if (startingNewGame || !isGameOver()) return;
+    if (!canStartNewGame()) {
+      newGameNote.textContent = t('waitingHost');
+      return;
+    }
+
+    startingNewGame = true;
+    newGameBtn.disabled = true;
+
+    try {
+      if (gameMode === 'solo') {
+        const game = newGameState();
+        roomState.cards = game.cards;
+        roomState.deck = game.deck;
+        roomState.players = { Solo: { score: 0, pending_skip: false, skip_token: null } };
+        roomState.version = Number(roomState.version || 0) + 1;
+        roomState.next_card_allowed_at = null;
+        selected = [];
+        declaringSet = false;
+        setDeadline = 0;
+        message.textContent = t('intro');
+        render();
+        return;
+      }
+
+      await archiveCurrentGame();
+
+      const result = await optimisticUpdate(state => {
+        const deck = makeDeck();
+        const cards = deck.splice(-12);
+        const newToken = new Date(Date.now() + ROUND_MS).toISOString();
+
+        state.cards = cards;
+        state.deck = deck;
+        state.players = resetPlayerScores(state.players);
+        state.next_card_allowed_at = newToken;
+        state.has_started = false;
+        state.current_game_started_at = new Date().toISOString();
+
+        if (!state.host_name || !hostIsPresent()) {
+          state.host_name = playerName;
+        }
+
+        state.meta = {};
+        return state;
+      });
+
+      if (!result.ok) {
+        message.textContent = t('updateConflict');
+        return;
+      }
+
+      selected = [];
+      declaringSet = false;
+      setDeadline = 0;
+      historyLoadedForVersion = null;
+      await updatePresence({ thinking_until: 0, round_token: roomState.next_card_allowed_at });
+      await loadGameHistory(true);
+      message.textContent = t('intro');
+      render();
+    } catch (err) {
+      console.error('new game', err);
+      message.textContent = `${t('joinError')} ${err?.message || ''}`;
+    } finally {
+      startingNewGame = false;
+      render();
+    }
+  }
+
+  function isGameOver() {
+    if (!roomState) return false;
+    const deckEmpty = !Array.isArray(roomState.deck) || roomState.deck.length === 0;
+    const noSet = !findAnySet(roomState.cards || []);
+    return deckEmpty && noSet;
+  }
+
+  function gameOverText() {
+    if (!isGameOver()) return '';
+
+    if (gameMode === 'solo') {
+      return `${t('gameOver')} ${t('finalScoreSolo')(playerScore(playerName))}`;
+    }
+
+    const scores = Object.entries(roomState.players || {})
+      .map(([name, raw]) => [name, normalizePlayerEntry(raw).score])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+    if (!scores.length) return t('gameOver');
+
+    const topScore = scores[0][1];
+    const winners = scores.filter(([, score]) => score === topScore).map(([name]) => name);
+
+    const scoreLine = scores.map(([name, score]) => `${name}: ${score}`).join(' · ');
+    const winnerLine = winners.length === 1
+      ? t('winnerSingle')(winners[0])
+      : t('winnerTie')(winners.join(', '));
+
+    return `${t('gameOver')} ${winnerLine} ${t('finalScoresTitle')} ${scoreLine}`;
+  }
+
+  function updateGameOverUI() {
+    const over = isGameOver();
+
+    if (over) {
+      gameOverEl.textContent = gameOverText();
+      gameOverEl.classList.remove('hidden');
+      gameOverActionsEl.classList.remove('hidden');
+
+      const canRestart = canStartNewGame();
+      newGameBtn.disabled = startingNewGame || !canRestart;
+      downloadResultsBtn.disabled = false;
+      deleteTableBtn.disabled = gameMode !== 'table' || !canRestart;
+
+      if (gameMode === 'solo') {
+        newGameNote.textContent = '';
+        gameHistoryEl.classList.add('hidden');
+      } else {
+        ensureCurrentGameArchived();
+        currentHostEl.textContent = roomState?.host_name || '—';
+        gameHistoryEl.classList.remove('hidden');
+
+        if (roomState?.host_name === playerName) {
+          newGameNote.textContent = '';
+        } else if (!hostIsPresent()) {
+          newGameNote.textContent = t('hostAwayRestart');
+        } else {
+          newGameNote.textContent = t('waitingHost');
+        }
+
+        loadGameHistory();
+      }
+    } else {
+      gameOverEl.textContent = '';
+      gameOverEl.classList.add('hidden');
+      gameOverActionsEl.classList.add('hidden');
+      gameHistoryEl.classList.add('hidden');
+      newGameNote.textContent = '';
+    }
+
+    return over;
+  }
+
+  function render() {
+    if (!roomState) return;
+    const over = updateGameOverUI();
+    if (gameMode === 'table') currentHostEl.textContent = roomState?.host_name || '—';
+    board.innerHTML = '';
+
+    const liveClaim = currentLiveClaim();
+
+    (roomState.cards || []).forEach(id => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'set-card';
+
+      if (id == null) {
+        btn.classList.add('empty-slot');
+        btn.disabled = true;
+        btn.setAttribute('aria-hidden', 'true');
+        board.appendChild(btn);
+        return;
+      }
+
+      const card = cardObj(id);
+      if (selected.includes(id)) btn.classList.add('selected');
+      if (liveClaim && liveClaim.client_id !== clientId && liveClaim.state === 'selecting' && liveClaim.selected.includes(id)) btn.classList.add('remote-selected');
+      btn.setAttribute('aria-label', cardDescription(card));
+      btn.setAttribute('aria-pressed', selected.includes(id) ? 'true' : 'false');
+      btn.innerHTML = svgFor(card);
+      btn.addEventListener('click', () => selectCard(id));
+      if (role !== 'player' || over || (liveClaim && liveClaim.client_id !== clientId)) btn.disabled = true;
+      board.appendChild(btn);
+    });
+
+    setBtn.classList.toggle('active', declaringSet);
+    setBtn.setAttribute('aria-pressed', declaringSet ? 'true' : 'false');
+    renderTimers();
+  }
+
+  async function fetchRoom() {
+    const { data, error } = await db
+      .from('rooms')
+      .select('name,cards,deck,players,version,next_card_allowed_at,host_name,host_client_id,created_at,last_activity_at,has_started,current_game_started_at')
+      .eq('name', roomName)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) {
+      roomState = data;
+      hostClientId = data.host_client_id || hostClientId;
+      render();
+    }
+    return data;
+  }
+
+  async function ensurePlayerRegistered() {
+    // In P2P mode the host owns the authoritative player list.
+    // Guests are registered by their WebRTC hello message.
+    if (role !== 'player') return true;
+    if (roomState && !Object.prototype.hasOwnProperty.call(roomState.players || {}, playerName) && isHostClient) {
+      roomState.players = {
+        ...(roomState.players || {}),
+        [playerName]: { score: 0, pending_skip: false, skip_token: null }
+      };
+      roomState.version = Number(roomState.version || 0) + 1;
+      scheduleRoomCheckpoint();
+    }
+    return true;
+  }
+
+  async function updatePresence(extra = {}) {
+    myPresence = {
+      client_id: clientId,
+      name: playerName,
+      role,
+      last_activity: Date.now(),
+      thinking_until: myPresence?.thinking_until || 0,
+      round_token: roomState?.next_card_allowed_at || null,
+      claim_state: myPresence?.claim_state || null,
+      claim_started_at: Number(myPresence?.claim_started_at || 0),
+      claim_first_at: Number(myPresence?.claim_first_at || 0),
+      claim_deadline: Number(myPresence?.claim_deadline || 0),
+      claim_priority_until: Number(myPresence?.claim_priority_until || 0),
+      claim_selected: Array.isArray(myPresence?.claim_selected) ? myPresence.claim_selected : [],
+      ...extra
+    };
+
+    presenceMap.set(clientId, myPresence);
+
+    if (gameMode === 'table') {
+      if (isHostClient) {
+        broadcastPresenceSnapshot();
+      } else {
+        safeJsonSend(hostDataChannel, {
+          type: 'presence_update',
+          presence: myPresence
+        });
+      }
+    }
+    render();
+  }
+
+  function noteActivity() {
+    if (!myPresence) return;
+    const now = Date.now();
+    // P2P presence heartbeat is intentionally sparse.
+    if (now - Number(myPresence.last_activity || 0) < 30000) return;
+    updatePresence({ last_activity: now });
+  }
+
+  async function subscribePresence() {
+    // Kept as a compatibility no-op. Live presence now travels over WebRTC.
+    return true;
+  }
+
+  async function subscribeRealtime() {
+    // Kept as a compatibility no-op. Live game state now travels over WebRTC.
+    return true;
+  }
+
+
+  function startSoloGame() {
+    const game = newGameState();
+    roomState = {
+      name: 'solo',
+      cards: game.cards,
+      deck: game.deck,
+      players: { Solo: { score: 0, pending_skip: false, skip_token: null } },
+      version: 1,
+      next_card_allowed_at: null
+    };
+    roomName = 'solo';
+    playerName = 'Solo';
+    role = 'player';
+    gameMode = 'solo';
+
+    currentRoomEl.textContent = '-';
+    currentPlayerEl.textContent = playerName;
+    currentRoleEl.textContent = t('modeSolo');
+
+    joinScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+    applyModeUI();
+
+    setConnectionStatus('online');
+    myPresence = { client_id: clientId, name: playerName, role: 'player', last_activity: Date.now(), thinking_until: 0, round_token: null };
+    presenceMap = new Map([[clientId, myPresence]]);
+    message.textContent = t('intro');
+    selected = [];
+    declaringSet = false;
+    setDeadline = 0;
+    render();
+    startTimerLoop();
+  }
+
+  function updateModeUI() {
+    gameMode = modeSelect.value === 'table' ? 'table' : 'solo';
+    const tableMode = gameMode === 'table';
+    tableFields.classList.toggle('hidden', !tableMode);
+    soloInfo.classList.toggle('hidden', tableMode);
+
+    playerNameInput.required = tableMode;
+    roomNameInput.required = tableMode;
+
+    joinButton.textContent = t('start');
+    joinState.textContent = '';
+  }
+
+  async function ensureHostForLegacyRoom() {
+    if (gameMode !== 'table' || role !== 'player' || !roomState) return;
+
+    if (!roomState.host_client_id) {
+      const { data, error } = await db
+        .from('rooms')
+        .update({
+          host_name: roomState.host_name || playerName,
+          host_client_id: clientId,
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('name', roomName)
+        .is('host_client_id', null)
+        .select('name,host_name,host_client_id')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        roomState.host_name = data.host_name;
+        roomState.host_client_id = data.host_client_id;
+      } else {
+        const latest = await fetchRoom();
+        roomState = latest || roomState;
+      }
+    }
+
+    hostClientId = roomState.host_client_id || null;
+  }
+
+  async function joinOrCreateRoom() {
+    joinState.textContent = '';
+    joinButton.disabled = true;
+    joinButton.textContent = t('joining');
+
+    try {
+      let existing = await fetchRoom();
+
+      if (!existing) {
+        const game = newGameState();
+        if (role === 'player') game.players[playerName] = { score: 0, pending_skip: false, skip_token: null };
+
+        const { data, error } = await db
+          .from('rooms')
+          .insert({
+            name: roomName,
+            cards: game.cards,
+            deck: game.deck,
+            players: game.players,
+            version: game.version,
+            next_card_allowed_at: game.next_card_allowed_at,
+            host_name: playerName,
+            host_client_id: clientId,
+            has_started: false,
+            last_activity_at: new Date().toISOString(),
+            current_game_started_at: new Date().toISOString()
+          })
+          .select('name,cards,deck,players,version,next_card_allowed_at,host_name,host_client_id,created_at,last_activity_at,has_started,current_game_started_at')
+          .single();
+
+        if (error) {
+          existing = await fetchRoom();
+          if (!existing) throw error;
+        } else {
+          roomState = data;
+        }
+      }
+
+      await ensureHostForLegacyRoom();
+
+      isHostClient = roomState?.host_client_id === clientId;
+      hostClientId = roomState?.host_client_id || null;
+
+      if (isHostClient) {
+        await ensurePlayerRegistered();
+      }
+
+      localStorage.setItem('set-player-name', playerName);
+      const url = new URL(location.origin);
+      url.pathname = roomPath(roomName);
+      history.replaceState({}, '', url);
+
+      currentRoomEl.textContent = roomName;
+      currentPlayerEl.textContent = playerName;
+      document.title = `SET — ${roomName}`;
+      currentRoleEl.textContent = role === 'observer' ? t('roleObserver') : t('rolePlayer');
+      currentHostEl.textContent = roomState?.host_name || '—';
+
+      joinScreen.classList.add('hidden');
+      gameScreen.classList.remove('hidden');
+      applyModeUI();
+
+      await closeP2P();
+      if (isHostClient) {
+        await startHostP2P();
+      } else {
+        if (!hostClientId) throw new Error('No host available for this table');
+        await startGuestP2P();
+      }
+
+      message.textContent = t('intro');
+      render();
+      startTimerLoop();
+    } catch (err) {
+      console.error(err);
+      const parts = [
+        err && err.message ? err.message : '',
+        err && err.code ? `code=${err.code}` : '',
+        err && err.details ? `details=${err.details}` : '',
+        err && err.hint ? `hint=${err.hint}` : ''
+      ].filter(Boolean);
+      joinState.textContent = parts.length
+        ? `${t('joinError')} [${parts.join(' | ')}]`
+        : t('joinError');
+    } finally {
+      joinButton.disabled = false;
+      joinButton.textContent = t('start');
+    }
+  }
+
+  async function optimisticUpdate(mutator) {
+    busy = true;
+    render();
+
+    try {
+      if (gameMode !== 'table') {
+        return { ok: false, reason: 'not-table' };
+      }
+
+      const base = roomState;
+      if (!base) throw new Error('Room missing');
+
+      const next = mutator({
+        name: base.name,
+        cards: [...(base.cards || [])],
+        deck: [...(base.deck || [])],
+        players: { ...(base.players || {}) },
+        version: Number(base.version || 0),
+        next_card_allowed_at: base.next_card_allowed_at,
+        host_name: base.host_name || playerName,
+        host_client_id: isHostClient ? clientId : hostClientId,
+        created_at: base.created_at || null,
+        last_activity_at: base.last_activity_at || null,
+        has_started: !!base.has_started,
+        current_game_started_at: base.current_game_started_at || null
+      });
+
+      if (!next) return { ok: false, reason: 'cancelled' };
+
+      if (isHostClient) {
+        roomState = {
+          ...base,
+          ...next,
+          host_name: playerName,
+          host_client_id: clientId,
+          version: Number(base.version || 0) + 1,
+          last_activity_at: new Date().toISOString()
+        };
+        scheduleRoomCheckpoint();
+        broadcastGameState();
+        render();
+        return { ok: true, state: roomState, meta: next.meta || {} };
+      }
+
+      if (!hostDataChannel || hostDataChannel.readyState !== 'open') {
+        return { ok: false, reason: 'host-offline' };
+      }
+
+      const proposalId = `${clientId}-${++proposalSeq}`;
+      const proposal = {
+        type: 'state_proposal',
+        proposal_id: proposalId,
+        base_version: Number(base.version || 0),
+        state: {
+          cards: next.cards,
+          deck: next.deck,
+          players: next.players,
+          next_card_allowed_at: next.next_card_allowed_at,
+          has_started: !!next.has_started,
+          current_game_started_at: next.current_game_started_at || base.current_game_started_at
+        },
+        meta: next.meta || {}
+      };
+
+      const resultPromise = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          proposalWaiters.delete(proposalId);
+          resolve({ ok:false, reason:'timeout' });
+        }, 5000);
+        proposalWaiters.set(proposalId, {resolve, reject, timer});
+      });
+
+      if (!safeJsonSend(hostDataChannel, proposal)) {
+        const waiter = proposalWaiters.get(proposalId);
+        if (waiter) {
+          clearTimeout(waiter.timer);
+          proposalWaiters.delete(proposalId);
+        }
+        return { ok:false, reason:'host-offline' };
+      }
+
+      const result = await resultPromise;
+      if (result.state) roomState = result.state;
+      render();
+      return result;
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  async function addNewCard() {
+    if (isGameOver()) {
+      message.textContent = gameOverText();
+      return;
+    }
+    if (role !== 'player') {
+      message.textContent = t('observerBlocked');
+      return;
+    }
+    if (isPlayerSkipped(playerName)) {
+      message.textContent = t('skippedRound');
+      return;
+    }
+    if (!roomState?.deck?.length) {
+      message.textContent = t('deckEmpty');
+      return;
+    }
+
+    if (gameMode === 'solo') {
+      const hole = roomState.cards.findIndex(id => id == null);
+      if (hole >= 0) roomState.cards[hole] = roomState.deck.pop();
+      else roomState.cards.push(roomState.deck.pop());
+      roomState.version++;
+      message.textContent = t('cardAdded')(roomState.cards.length);
+      render();
+      return;
+    }
+
+    if (nextCardRemainingMs() > 0) {
+      message.textContent = t('waitTimer');
+      return;
+    }
+    if (anyThinking()) {
+      message.textContent = t('waitHands');
+      return;
+    }
+
+    const result = await optimisticUpdate(state => {
+      if (!state.deck.length) return null;
+      state.has_started = true;
+      const hole = state.cards.findIndex(id => id == null);
+      if (hole >= 0) state.cards[hole] = state.deck.pop();
+      else state.cards.push(state.deck.pop());
+      const newToken = new Date(Date.now() + ROUND_MS).toISOString();
+      state.players = advanceRoundPenalties(state.players, newToken);
+      state.next_card_allowed_at = newToken;
+      state.meta = { cardCount: state.cards.length };
+      return state;
+    });
+
+    if (result.ok) {
+      await updatePresence({ thinking_until: Date.now() + THINK_MS });
+      message.textContent = t('cardAdded')(result.meta.cardCount);
+    } else if (result.reason === 'conflict') {
+      message.textContent = t('updateConflict');
+    }
+  }
+
+  async function selectCardMultiplayer(id) {
+    const claim=currentLiveClaim();
+    if (claim && claim.client_id!==clientId) { message.textContent=t('liveSetBusy')(claim.name); return; }
+
+    if (claim && claim.client_id===clientId && claim.state==='priority') {
+      const now=Date.now();
+      if (now>=claim.priority_until) { await clearClaimPresence(); render(); return; }
+      selected=[id]; declaringSet=true; setDeadline=now+SET_MS;
+      await updatePresence({claim_state:'selecting',claim_started_at:now,claim_first_at:now,claim_deadline:setDeadline,claim_priority_until:0,claim_selected:[...selected]});
+      message.textContent=t('chooseMore')(2); return;
+    }
+
+    if (!claim || claim.client_id!==clientId || claim.state!=='selecting') { message.textContent=t('firstSet'); return; }
+    const idx=selected.indexOf(id);
+    if (idx>=0) selected.splice(idx,1); else if (selected.length<3) selected.push(id);
+    const now=Date.now();
+    let firstAt=Number(myPresence?.claim_first_at||0), deadline=Number(myPresence?.claim_deadline||0);
+    if (selected.length>0 && !firstAt) { firstAt=now; deadline=Number(myPresence?.claim_started_at||now)+SET_MS; setDeadline=deadline; }
+    await updatePresence({claim_state:'selecting',claim_first_at:firstAt,claim_deadline:deadline,claim_selected:[...selected]});
+    if (selected.length===3) await submitSet([...selected]); else message.textContent=t('chooseMore')(3-selected.length);
+  }
+
+  function selectCard(id) {
+    noteActivity();
+    if (gameMode === 'table') { selectCardMultiplayer(id); return; }
+    if (isGameOver()) {
+      message.textContent = gameOverText();
+      return;
+    }
+    if (role !== 'player') {
+      message.textContent = t('observerBlocked');
+      return;
+    }
+    if (isPlayerSkipped(playerName)) {
+      message.textContent = t('skippedRound');
+      return;
+    }
+    if (!declaringSet) {
+      message.textContent = t('firstSet');
+      return;
+    }
+
+    const idx = selected.indexOf(id);
+    if (idx >= 0) selected.splice(idx, 1);
+    else if (selected.length < 3) selected.push(id);
+
+    render();
+
+    if (selected.length === 3) submitSet([...selected]);
+    else message.textContent = t('chooseMore')(3 - selected.length);
+  }
+
+  async function finishSetStreak() {
+    if (gameMode !== 'table' || !roomState || !hasHoles(roomState.cards)) {
+      await clearClaimPresence();
+      clearLocalSetState();
+      render();
+      return;
+    }
+
+    const result = await optimisticUpdate(state => {
+      const filled = fillHolesFromDeck(state.cards, state.deck);
+      state.cards = filled.cards;
+      state.deck = filled.deck;
+      const newToken = new Date(Date.now() + ROUND_MS).toISOString();
+      state.players = advanceRoundPenalties(state.players, newToken);
+      state.next_card_allowed_at = newToken;
+      state.meta = { added: filled.added };
+      return state;
+    });
+
+    await clearClaimPresence();
+    clearLocalSetState();
+    if (!result.ok) await fetchRoom();
+    render();
+  }
+
+  async function failSetCall(reason) {
+    if (setPenaltyRunning) return;
+    setPenaltyRunning = true;
+
+    const timeout = reason === 'timeout';
+    const startTimeout = reason === 'startTimeout';
+    selected = [];
+    declaringSet = false;
+    setDeadline = 0;
+
+    try {
+      if (gameMode === 'solo') {
+        const entry = normalizePlayerEntry(roomState.players[playerName]);
+        if (entry.score > 0) {
+          entry.score -= 1;
+          roomState.players[playerName] = entry;
+          message.textContent = startTimeout ? t('setStartTimeoutPoint') : timeout ? t('setTimeoutPoint') : t('wrongSetPoint');
+        } else {
+          roomState.players[playerName] = entry;
+          message.textContent = timeout ? t('setTimeoutSoloZero') : t('wrongSetSoloZero');
+        }
+        render();
+        return;
+      }
+
+      const result = await optimisticUpdate(state => {
+        state.has_started = true;
+        const entry = normalizePlayerEntry(state.players[playerName]);
+        if (entry.score > 0) {
+          entry.score -= 1;
+          state.players[playerName] = entry;
+          state.meta = { deducted: true, skip: false };
+        } else {
+          entry.pending_skip = true;
+          state.players[playerName] = entry;
+          state.meta = { deducted: false, skip: true };
+        }
+        return state;
+      });
+
+      if (result.ok) {
+        if (result.meta.deducted) {
+          message.textContent = startTimeout ? t('setStartTimeoutPoint') : timeout ? t('setTimeoutPoint') : t('wrongSetPoint');
+        } else {
+          message.textContent = startTimeout ? t('setStartTimeoutSkip') : timeout ? t('setTimeoutSkip') : t('wrongSetSkip');
+        }
+        if (hasHoles(result.state.cards)) await finishSetStreak();
+        else await clearClaimPresence();
+      } else {
+        await clearClaimPresence();
+        message.textContent = t('updateConflict');
+      }
+    } finally {
+      setPenaltyRunning = false;
+      render();
+    }
+  }
+
+  async function submitSet(chosenIds) {
+    const chosen = chosenIds.map(cardObj);
+
+    if (!isSet(...chosen)) {
+      await failSetCall('wrong');
+      return;
+    }
+
+    setDeadline = 0;
+
+    if (gameMode === 'solo') {
+      roomState.cards = removeCardsLeavingHoles(roomState.cards, chosenIds);
+      const filled = fillHolesFromDeck(roomState.cards, roomState.deck);
+      roomState.cards = filled.cards;
+      roomState.deck = filled.deck;
+
+      const myEntry = normalizePlayerEntry(roomState.players[playerName]);
+      myEntry.score += 1;
+      roomState.players[playerName] = myEntry;
+      roomState.version++;
+
+      selected = [];
+      declaringSet = false;
+      message.textContent = filled.added > 0 ? t('correctAdded')(filled.added) : t('correctRemoved');
+      render();
+      return;
+    }
+
+    const result = await optimisticUpdate(state => {
+      if (!chosenIds.every(id => state.cards.includes(id))) return null;
+      state.has_started = true;
+
+      state.cards = removeCardsLeavingHoles(state.cards, chosenIds);
+
+      const myEntry = normalizePlayerEntry(state.players[playerName]);
+      myEntry.score += 1;
+      state.players[playerName] = myEntry;
+
+      // Do not refill the holes yet. The finder has a 3-second priority
+      // window to start another SET using only the cards that remained.
+      state.meta = { added: 0 };
+      return state;
+    });
+
+    selected = [];
+    declaringSet = false;
+
+    if (result.ok) {
+      const now = Date.now();
+      await updatePresence({ thinking_until: Date.now() + THINK_MS, claim_state:'priority', claim_started_at:now, claim_first_at:0, claim_deadline:0, claim_priority_until:now+SET_PRIORITY_MS, claim_selected:[] });
+      message.textContent = t('correctPriority');
+    } else if (result.reason === 'cancelled') {
+      message.textContent = t('lostRace');
+      await fetchRoom();
+    } else {
+      message.textContent = t('updateConflict');
+    }
+
+    render();
+  }
+
+  async function toggleThinking() {
+    if (isGameOver()) {
+      message.textContent = gameOverText();
+      return;
+    }
+    if (role !== 'player') {
+      message.textContent = t('observerBlocked');
+      return;
+    }
+    if (isPlayerSkipped(playerName)) {
+      message.textContent = t('skippedRound');
+      return;
+    }
+    const currently = isThinking(myPresence);
+    if (gameMode === 'solo') {
+      myPresence = {
+        client_id: clientId,
+        name: playerName,
+        role: 'player',
+        last_activity: Date.now(),
+        thinking_until: currently ? 0 : Date.now() + THINK_MS
+      };
+      presenceMap = new Map([[clientId, myPresence]]);
+      renderTimers();
+      return;
+    }
+    await updatePresence({
+      thinking_until: currently ? 0 : Date.now() + THINK_MS
+    });
+  }
+
+  newGameBtn.addEventListener('click', startNewGame);
+  downloadResultsBtn.addEventListener('click', downloadResults);
+  deleteTableBtn.addEventListener('click', deleteCurrentTable);
+  copyInviteBtn.addEventListener('click', copyInviteLink);
+  helpBtn.addEventListener('click', openHelp);
+  helpCloseBtn.addEventListener('click', closeHelp);
+  helpOverlay.addEventListener('click', event => {
+    if (event.target === helpOverlay) closeHelp();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !helpOverlay.classList.contains('hidden')) closeHelp();
+  });
+
+  setBtn.addEventListener('click', async () => {
+    noteActivity();
+    if (isGameOver()) { message.textContent=gameOverText(); return; }
+    if (role!=='player') { message.textContent=t('observerBlocked'); return; }
+    if (isPlayerSkipped(playerName)) { message.textContent=t('skippedRound'); return; }
+
+    if (gameMode==='table') {
+      const liveClaim=currentLiveClaim();
+      if (liveClaim && liveClaim.client_id!==clientId) { message.textContent=t('liveSetBusy')(liveClaim.name); return; }
+      if (liveClaim && liveClaim.client_id===clientId) { if (liveClaim.state==='selecting') await failSetCall('wrong'); return; }
+      const now=Date.now(); selected=[]; declaringSet=true; setDeadline=now+SET_MS;
+      await updatePresence({claim_state:'selecting',claim_started_at:now,claim_first_at:0,claim_deadline:setDeadline,claim_priority_until:0,claim_selected:[]});
+      message.textContent=t('setDeclared'); return;
+    }
+
+    if (declaringSet) { await failSetCall('wrong'); return; }
+    declaringSet=true; selected=[]; setDeadline=Date.now()+SET_MS; message.textContent=t('setDeclared'); render();
+  });
+
+  thinkBtn.addEventListener('click', () => {
+    noteActivity();
+    toggleThinking();
+  });
+
+  hasSetBtn.addEventListener('click', () => {
+    noteActivity();
+    if (isGameOver()) {
+      message.textContent = gameOverText();
+      return;
+    }
+    const result = findAnySet(roomState?.cards || []);
+    message.textContent = result ? t('hasSetYes') : t('hasSetNo');
+  });
+
+  newBtn.addEventListener('click', () => {
+    noteActivity();
+    addNewCard();
+  });
+
+  leaveBtn.addEventListener('click', async () => {
+    await closeP2P();
+
+    stopTimerLoop();
+    roomState = null;
+    selected = [];
+    declaringSet = false;
+    setDeadline = 0;
+    historyLoadedForVersion = null;
+    roomName = '';
+
+    const url = appRootUrl();
+    history.replaceState({}, '', url);
+
+    gameScreen.classList.add('hidden');
+    joinScreen.classList.remove('hidden');
+    gameScreen.classList.remove('solo-mode');
+    document.title = 'SET Multiplayer';
+    setConnectionStatus('connecting');
+  });
+
+  joinForm.addEventListener('submit', async event => {
+    event.preventDefault();
+
+    gameMode = modeSelect.value === 'table' ? 'table' : 'solo';
+
+    if (gameMode === 'solo') {
+      startSoloGame();
+      return;
+    }
+
+    playerName = sanitizePlayerName(playerNameInput.value);
+    roomName = normalizeRoomName(roomNameInput.value);
+    role = roleSelect.value === 'observer' ? 'observer' : 'player';
+
+    if (!playerName || !roomName) {
+      joinState.textContent = t('invalidNames');
+      return;
+    }
+
+    roomNameInput.value = roomName;
+    await joinOrCreateRoom();
+  });
+
+  function startTimerLoop() {
+    stopTimerLoop();
+    timerHandle = setInterval(() => {
+      if (!roomState) return;
+
+      // Auto-expire local hand in the UI and Presence.
+      if (myPresence && Number(myPresence.thinking_until || 0) > 0 &&
+          Number(myPresence.thinking_until) <= Date.now()) {
+        if (gameMode === 'solo') {
+          myPresence.thinking_until = 0;
+          myPresence.last_activity = Date.now();
+          presenceMap = new Map([[clientId, myPresence]]);
+        } else {
+          updatePresence({ thinking_until: 0 });
+        }
+      }
+
+      if (gameMode === 'table') {
+        const claim=currentLiveClaim();
+        if (claim && claim.client_id===clientId && !setPenaltyRunning) {
+          if (claim.state==='priority' && Date.now()>=claim.priority_until) { finishSetStreak(); }
+          else if (claim.state==='selecting') {
+            if (claim.selected.length===0 && Date.now()>=claim.start_deadline) failSetCall('startTimeout');
+            else if (claim.selected.length>0 && Date.now()>=claim.deadline) failSetCall('timeout');
+          }
+        }
+      } else if (declaringSet && setDeadline > 0 && Date.now() >= setDeadline && !setPenaltyRunning) {
+        failSetCall('timeout');
+      }
+
+      renderTimers();
+    }, 100);
+  }
+
+  function stopTimerLoop() {
+    if (timerHandle) clearInterval(timerHandle);
+    timerHandle = null;
+  }
+
+  // Local user activity heartbeat, but only on real interaction.
+  ['pointerdown', 'keydown', 'touchstart'].forEach(evt => {
+    document.addEventListener(evt, noteActivity, { passive: true });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') noteActivity();
+  });
+
+  window.addEventListener('online', async () => {
+    if (gameMode !== 'table' || !roomName) return;
+    try {
+      if (isHostClient) {
+        await startHostP2P();
+      } else if (hostClientId) {
+        await startGuestP2P();
+      }
+    } catch (err) {
+      console.error('P2P reconnect', err);
+    }
+  });
+
+  window.addEventListener('offline', () => setConnectionStatus('error'));
+
+  modeSelect.addEventListener('change', () => {
+    if (location.pathname === appRootPath() || location.pathname === githubBasePath()) {
+      roomNameInput.readOnly = false;
+    }
+    updateModeUI();
+  });
+
+  const savedPlayer = localStorage.getItem('set-player-name') || '';
+  playerNameInput.value = savedPlayer;
+
+  const initialTable = new URLSearchParams(location.search).get('table');
+  if (initialTable) roomNameInput.value = normalizeRoomName(initialTable);
+
+  applyLanguage();
+  renderHelpContent();
+  modeSelect.value = 'solo';
+  updateModeUI();
+
+  const tableFromPath = roomNameFromPath();
+  if (tableFromPath) {
+    const invitedRoom = normalizeRoomName(tableFromPath);
+    roomNameInput.value = invitedRoom;
+    modeSelect.value = 'table';
+    updateModeUI();
+    joinState.textContent = t('inviteTable')(invitedRoom);
+    roomNameInput.readOnly = true;
+    document.title = `SET — ${invitedRoom}`;
+    setTimeout(() => playerNameInput.focus(), 0);
+  }
+})();
+</script>
+</body>
+</html>
