@@ -1,15 +1,14 @@
-SET GitHub Pages – P2P chat, PING/PONG, checkpoints and host migration
+SET GitHub Pages – draggable P2P chat + transient page messages
 
 New:
-- Visible P2P table chat (not persisted).
-- PING/PONG every 5 seconds and RTT connection-quality display.
-- Host detects stale peers; guests detect a missing host after ~16 seconds.
-- Automatic host migration. The winner becomes host in Supabase; all other clients
-  perform fresh signaling to the new host.
-- Full host checkpoint every 60 seconds, plus existing debounced state checkpoints.
+- Table chat is draggable by its header.
+- Uses Pointer Events, so dragging works with mouse, touch and pen.
+- Window is clamped to the visible viewport and stays on-screen after rotation/resize.
+- Every new chat message also appears below the cards, directly above the SET rule.
+- Those inline messages stay for 30 seconds total:
+    27 s fully visible + 3 s fade-out.
+- Clicking an inline message opens the chat window.
+- Maximum 5 inline messages are kept visible at once.
+- Help text updated in Hungarian, English and German.
 
-No new Supabase SQL is required if supabase_p2p_signaling.sql was already run.
-
-GitHub Pages repository:
-  hermannlaszlo/setsetset
-Base path is already /setsetset.
+No new Supabase SQL is required.

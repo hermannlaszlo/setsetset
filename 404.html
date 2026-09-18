@@ -278,7 +278,20 @@
     .chat-header {
       display:flex; align-items:center; justify-content:space-between;
       gap:10px; padding:10px 12px; border-bottom:1px solid var(--border);
+      cursor: move;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
+    .chat-header.dragging { cursor: grabbing; }
+    .chat-header button {
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+    .chat-status { margin-top:2px; color:var(--muted); font-size:11px; }
+    .chat-status.online { color:var(--good); }
+    .chat-status.offline { color:var(--bad); }
     .chat-close-btn {
       width:36px; min-width:36px; height:36px; min-height:36px;
       padding:0; font-size:23px; line-height:1;
@@ -306,6 +319,40 @@
     .quality-good { color:var(--good); }
     .quality-medium { color:var(--warn); }
     .quality-bad { color:var(--bad); }
+
+    .chat-toast-area {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin: 12px 0 8px;
+      min-height: 0;
+    }
+    .chat-toast-area:empty { display: none; }
+    .chat-toast {
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 8px 10px;
+      box-shadow: 0 3px 12px rgba(0,0,0,.08);
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 3s ease, transform 3s ease;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+    .chat-toast.fading {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+    .chat-toast-meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .chat-toast-text {
+      overflow-wrap: anywhere;
+    }
 
     .help-icon-btn {
       width: 44px;
@@ -398,6 +445,10 @@
     }
     @media (max-width: 430px) {
       .wrap { padding: 10px; }
+      .chat-panel {
+        width: min(360px, calc(100vw - 16px));
+        height: min(480px, calc(100vh - 70px));
+      }
       .toolbar { gap: 8px; }
       .toolbar > button { flex: 1 1 calc(50% - 8px); padding: 10px 8px; }
       .card-actions { gap: 8px; margin-top: 8px; }
@@ -591,14 +642,19 @@
 
     <div id="board" class="board" aria-label="SET cards"></div>
 
+    <div id="chat-toast-area" class="chat-toast-area multiplayer-only" aria-live="polite"></div>
+
     <div class="help" data-i18n="help">
       A SET is valid when, for each of the four properties — number, shape, color and fill — the values are either all the same or all different.
     </div>
   </section>
 
   <div id="chat-panel" class="chat-panel hidden" role="dialog" aria-labelledby="chat-title">
-    <div class="chat-header">
-      <strong id="chat-title" data-i18n="chatTitle">Table chat</strong>
+    <div id="chat-drag-handle" class="chat-header" title="Drag">
+      <div>
+        <strong id="chat-title" data-i18n="chatTitle">Table chat</strong>
+        <div id="chat-status" class="chat-status"></div>
+      </div>
       <button id="chat-close-btn" class="chat-close-btn" type="button" aria-label="Close">×</button>
     </div>
     <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
@@ -678,6 +734,9 @@
   const chatMessagesEl = document.getElementById('chat-messages');
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
+  const chatStatusEl = document.getElementById('chat-status');
+  const chatDragHandle = document.getElementById('chat-drag-handle');
+  const chatToastArea = document.getElementById('chat-toast-area');
   const connectionQualityEl = document.getElementById('connection-quality');
   const helpBtn = document.getElementById('help-btn');
   const helpOverlay = document.getElementById('help-overlay');
@@ -786,6 +845,9 @@
       chatPlaceholder: 'Üzenet…',
       chatSend: 'Küldés',
       chatEmpty: 'Még nincs üzenet.',
+      chatConnected: 'P2P kapcsolat aktív',
+      chatDisconnected: 'P2P kapcsolat még nem aktív',
+      chatQueued: 'Az üzenet vár a P2P kapcsolatra.',
       hostMigrating: 'A host kapcsolata megszakadt. Új host választása és újracsatlakozás…',
       hostMigrated: 'Új host vette át az asztalt.',
       connecting: 'Kapcsolódás…',
@@ -901,6 +963,9 @@
       chatPlaceholder: 'Message…',
       chatSend: 'Send',
       chatEmpty: 'No messages yet.',
+      chatConnected: 'P2P connection active',
+      chatDisconnected: 'P2P connection not active yet',
+      chatQueued: 'Message is waiting for the P2P connection.',
       hostMigrating: 'Host connection lost. Electing a new host and reconnecting…',
       hostMigrated: 'A new host has taken over the table.',
       connecting: 'Connecting…',
@@ -1016,6 +1081,9 @@
       chatPlaceholder: 'Nachricht…',
       chatSend: 'Senden',
       chatEmpty: 'Noch keine Nachrichten.',
+      chatConnected: 'P2P-Verbindung aktiv',
+      chatDisconnected: 'P2P-Verbindung noch nicht aktiv',
+      chatQueued: 'Nachricht wartet auf die P2P-Verbindung.',
       hostMigrating: 'Host-Verbindung verloren. Neuer Host wird gewählt und Verbindung neu aufgebaut…',
       hostMigrated: 'Ein neuer Host hat den Tisch übernommen.',
       connecting: 'Verbindung…',
@@ -1106,8 +1174,13 @@
   let periodicCheckpointTimer = null;
   let lastCheckpointAt = 0;
   const chatMessages = [];
+  const pendingChatMessages = [];
   let chatUnread = 0;
   const MAX_CHAT_MESSAGES = 200;
+  const CHAT_TOAST_VISIBLE_MS = 27000;
+  const CHAT_TOAST_FADE_MS = 3000;
+  let chatDragState = null;
+  let chatCustomPosition = false;
 
   const RTC_CONFIG = {
     iceServers: [
@@ -1381,6 +1454,7 @@
       localStorage.setItem('set-language', currentLang);
       applyLanguage();
       renderChat();
+      renderChatStatus();
       renderConnectionQuality();
       if (!helpOverlay.classList.contains('hidden')) renderHelpContent();
       if (roomState) {
@@ -1527,10 +1601,116 @@
     connectionText.textContent = mode === 'online' ? t('online') : mode === 'error' ? t('offline') : t('connecting');
   }
 
+  function showChatToast(msg) {
+    if (!chatToastArea || gameMode !== 'table' || !msg?.text) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'chat-toast';
+    toast.dataset.messageId = msg.id || '';
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-toast-meta';
+    const time = new Date(Number(msg.ts || Date.now())).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    meta.textContent = `${msg.name || 'Player'} · ${time}`;
+
+    const body = document.createElement('div');
+    body.className = 'chat-toast-text';
+    body.textContent = String(msg.text || '');
+
+    toast.append(meta, body);
+    chatToastArea.appendChild(toast);
+
+    // Keep the page from accumulating too many visible notifications.
+    while (chatToastArea.children.length > 5) {
+      chatToastArea.firstElementChild?.remove();
+    }
+
+    // Total lifetime: 30 s. Last 3 s are a fade-out.
+    const fadeTimer = setTimeout(() => {
+      toast.classList.add('fading');
+    }, CHAT_TOAST_VISIBLE_MS);
+
+    const removeTimer = setTimeout(() => {
+      toast.remove();
+    }, CHAT_TOAST_VISIBLE_MS + CHAT_TOAST_FADE_MS);
+
+    toast.addEventListener('click', () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(removeTimer);
+      toast.remove();
+      openChat();
+    }, { once: true });
+  }
+
+  function clampChatPanelToViewport(left, top) {
+    const rect = chatPanel.getBoundingClientRect();
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+    return {
+      left: Math.min(Math.max(margin, left), maxLeft),
+      top: Math.min(Math.max(margin, top), maxTop)
+    };
+  }
+
+  function setChatPanelPosition(left, top) {
+    const pos = clampChatPanelToViewport(left, top);
+    chatPanel.style.left = `${pos.left}px`;
+    chatPanel.style.top = `${pos.top}px`;
+    chatPanel.style.right = 'auto';
+    chatPanel.style.bottom = 'auto';
+    chatCustomPosition = true;
+  }
+
+  function keepChatPanelOnScreen() {
+    if (!chatCustomPosition || chatPanel.classList.contains('hidden')) return;
+    const rect = chatPanel.getBoundingClientRect();
+    setChatPanelPosition(rect.left, rect.top);
+  }
+
+  function startChatDrag(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest('button, input, textarea, select, a')) return;
+
+    const rect = chatPanel.getBoundingClientRect();
+    chatDragState = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top
+    };
+
+    chatDragHandle.classList.add('dragging');
+    chatDragHandle.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function moveChatDrag(event) {
+    if (!chatDragState || event.pointerId !== chatDragState.pointerId) return;
+    setChatPanelPosition(
+      event.clientX - chatDragState.offsetX,
+      event.clientY - chatDragState.offsetY
+    );
+    event.preventDefault();
+  }
+
+  function endChatDrag(event) {
+    if (!chatDragState || event.pointerId !== chatDragState.pointerId) return;
+    try { chatDragHandle.releasePointerCapture?.(event.pointerId); } catch {}
+    chatDragState = null;
+    chatDragHandle.classList.remove('dragging');
+    event.preventDefault();
+  }
+
   function appendChatMessage(msg) {
     if (!msg || !msg.id || chatMessages.some(x => x.id === msg.id)) return;
     chatMessages.push(msg);
     if (chatMessages.length > MAX_CHAT_MESSAGES) chatMessages.shift();
+
+    showChatToast(msg);
+
     if (chatPanel.classList.contains('hidden') && msg.from_client !== clientId) {
       chatUnread++;
       updateChatUnread();
@@ -1577,9 +1757,11 @@
   function openChat() {
     if (gameMode !== 'table') return;
     chatPanel.classList.remove('hidden');
+    if (chatCustomPosition) keepChatPanelOnScreen();
     chatUnread = 0;
     updateChatUnread();
     renderChat();
+    renderChatStatus();
     setTimeout(() => chatInput.focus(), 0);
   }
 
@@ -1587,9 +1769,34 @@
     chatPanel.classList.add('hidden');
   }
 
+  function renderChatStatus() {
+    if (!chatStatusEl) return;
+    const connected = gameMode === 'table' && (isHostClient || (hostDataChannel && hostDataChannel.readyState === 'open'));
+    chatStatusEl.textContent = connected ? t('chatConnected') : t('chatDisconnected');
+    chatStatusEl.classList.toggle('online', connected);
+    chatStatusEl.classList.toggle('offline', !connected);
+  }
+
+  function flushPendingChatMessages() {
+    if (isHostClient) {
+      while (pendingChatMessages.length) {
+        const msg = pendingChatMessages.shift();
+        broadcastP2P(msg);
+      }
+      return;
+    }
+
+    if (!hostDataChannel || hostDataChannel.readyState !== 'open') return;
+    while (pendingChatMessages.length) {
+      const msg = pendingChatMessages.shift();
+      safeJsonSend(hostDataChannel, msg);
+    }
+  }
+
   function sendChatMessage(text) {
     const trimmed = String(text || '').trim().slice(0, 500);
     if (!trimmed) return;
+
     const msg = {
       type:'chat',
       id:`${clientId}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
@@ -1598,12 +1805,24 @@
       text:trimmed,
       ts:Date.now()
     };
+
+    // Always show the sender's message immediately.
+    appendChatMessage(msg);
+
     if (isHostClient) {
-      appendChatMessage(msg);
       broadcastP2P(msg);
-    } else {
-      safeJsonSend(hostDataChannel, msg);
+      renderChatStatus();
+      return;
     }
+
+    if (hostDataChannel && hostDataChannel.readyState === 'open') {
+      safeJsonSend(hostDataChannel, msg);
+    } else {
+      pendingChatMessages.push(msg);
+      message.textContent = t('chatQueued');
+    }
+
+    renderChatStatus();
   }
 
   function qualityLabel(ms) {
@@ -1796,6 +2015,8 @@
       setConnectionStatus('online');
       p2pConnected = true;
       renderConnectionQuality();
+      renderChatStatus();
+      flushPendingChatMessages();
       // The guest sends hello as soon as its side opens.
     };
 
@@ -1846,6 +2067,9 @@
         }
       });
 
+      flushPendingChatMessages();
+      renderChatStatus();
+
       // Guest signaling is needed only until the direct WebRTC connection is open.
       if (signalChannel) {
         db.removeChannel(signalChannel);
@@ -1866,6 +2090,7 @@
       p2pConnected = false;
       setConnectionStatus('error');
       renderConnectionQuality();
+      renderChatStatus();
       setTimeout(() => triggerHostRecovery(), 1800);
     };
   }
@@ -1995,10 +2220,6 @@
       return;
     }
 
-    // Optional future visible chat can use this same hidden transport.
-    if (msg.type === 'chat') {
-      broadcastP2P({type:'chat', from: peerId, name: msg.name || '', text: String(msg.text || '').slice(0, 500)});
-    }
   }
 
   function handleGuestP2PMessage(msg) {
@@ -3570,6 +3791,12 @@
   copyInviteBtn.addEventListener('click', copyInviteLink);
   chatBtn.addEventListener('click', openChat);
   chatCloseBtn.addEventListener('click', closeChat);
+
+  chatDragHandle.addEventListener('pointerdown', startChatDrag);
+  chatDragHandle.addEventListener('pointermove', moveChatDrag);
+  chatDragHandle.addEventListener('pointerup', endChatDrag);
+  chatDragHandle.addEventListener('pointercancel', endChatDrag);
+  window.addEventListener('resize', keepChatPanelOnScreen);
   chatForm.addEventListener('submit', event => {
     event.preventDefault();
     const text = chatInput.value.trim();
@@ -3749,6 +3976,8 @@
 
   applyLanguage();
   renderHelpContent();
+  renderChat();
+  renderChatStatus();
   modeSelect.value = 'solo';
   updateModeUI();
 
