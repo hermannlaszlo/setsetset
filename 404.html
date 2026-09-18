@@ -921,6 +921,7 @@
       lostRace: 'Ez a SET közben már megváltozott egy másik játékos lépése miatt.',
       notSet: 'Ez a három kártya nem SET.',
       setDeclared: 'SET bemondva — válassz ki három kártyát.',
+      setChecking: '3 kártya kiválasztva — ellenőrzés…',
       setCancelled: 'SET kiválasztás megszakítva.',
       hasSetYes: 'Igen — van legalább egy SET a kitett kártyák között.',
       hasSetNo: 'Nincs SET a jelenleg kitett kártyák között.',
@@ -1049,6 +1050,7 @@
       lostRace: 'That SET changed because another player moved first.',
       notSet: 'Those three cards are not a SET.',
       setDeclared: 'SET called — select three cards.',
+      setChecking: '3 cards selected — checking…',
       setCancelled: 'SET selection cancelled.',
       hasSetYes: 'Yes — there is at least one SET among the cards on the table.',
       hasSetNo: 'There is no SET among the cards currently on the table.',
@@ -1177,6 +1179,7 @@
       lostRace: 'Dieses SET wurde inzwischen durch den Zug eines anderen Spielers verändert.',
       notSet: 'Diese drei Karten sind kein SET.',
       setDeclared: 'SET angesagt — wähle drei Karten aus.',
+      setChecking: '3 Karten ausgewählt — Prüfung…',
       setCancelled: 'SET-Auswahl abgebrochen.',
       hasSetYes: 'Ja — unter den ausliegenden Karten gibt es mindestens ein SET.',
       hasSetNo: 'Unter den aktuell ausliegenden Karten gibt es kein SET.',
@@ -2623,6 +2626,22 @@
       return;
     }
 
+    if (msg.type === 'set_outcome') {
+      diag('SET_OUTCOME', `${msg.result} deducted=${!!msg.deducted} skip=${!!msg.skip}`);
+
+      if (msg.result === 'correct') {
+        message.textContent = t('correctPriority');
+      } else if (msg.result === 'wrong') {
+        message.textContent = msg.deducted ? t('wrongSetPoint') : t('wrongSetSkip');
+      } else if (msg.result === 'timeout') {
+        message.textContent = msg.deducted ? t('setTimeoutPoint') : t('setTimeoutSkip');
+      } else if (msg.result === 'startTimeout') {
+        message.textContent = msg.deducted ? t('setStartTimeoutPoint') : t('setStartTimeoutSkip');
+      }
+      render();
+      return;
+    }
+
     if (msg.type === 'set_claim_result') {
       diag('SET_CLAIM_RESULT_RX', `granted=${!!msg.granted} owner=${msg.owner_name || '—'}`);
 
@@ -2633,7 +2652,9 @@
       setClaimPending = false;
 
       if (msg.granted) {
-        setHostClaim(msg.claim || null, false);
+        // set_claim_state is sent before this ACK on the same ordered DataChannel.
+        // Do not roll back a newer selecting/priority state with the older ACK snapshot.
+        if (!hostSetClaim) setHostClaim(msg.claim || null, false);
 
         // A very fast tap may happen before the host's grant round-trip arrives.
         // Replay those taps now, in original order.
@@ -2667,6 +2688,13 @@
         while (pendingSetCardIds.length) {
           const cardId = pendingSetCardIds.shift();
           safeJsonSend(hostDataChannel, {type:'set_select_card', card_id:cardId});
+        }
+
+        if (msg.claim.state === 'priority') {
+          message.textContent = t('correctPriority');
+        } else if (msg.claim.state === 'selecting') {
+          const n = (msg.claim.selected || []).length;
+          message.textContent = n >= 3 ? t('setChecking') : t('chooseMore')(3 - n);
         }
       } else {
         setHostClaim(msg.claim || null, false);
@@ -3120,6 +3148,13 @@
       selected = [...(hostSetClaim.selected || [])];
       declaringSet = hostSetClaim.state === 'selecting';
       setDeadline = Number(hostSetClaim.deadline || 0);
+
+      if (hostSetClaim.state === 'priority') {
+        message.textContent = t('correctPriority');
+      } else if (hostSetClaim.state === 'selecting') {
+        const n = selected.length;
+        message.textContent = n >= 3 ? t('setChecking') : t('chooseMore')(3 - n);
+      }
     } else {
       selected = [];
       declaringSet = false;
@@ -3159,6 +3194,30 @@
     broadcastGameState();
     render();
     return roomState;
+  }
+
+  function hostSendToPeer(peerId, payload) {
+    if (peerId === clientId) {
+      // Host's own client: handle locally without a DataChannel round-trip.
+      handleLocalHostMessage(payload);
+      return true;
+    }
+    return safeJsonSend(dataChannels.get(peerId), payload);
+  }
+
+  function handleLocalHostMessage(msg) {
+    if (msg?.type === 'set_outcome') {
+      if (msg.result === 'correct') {
+        message.textContent = t('correctPriority');
+      } else if (msg.result === 'wrong') {
+        message.textContent = msg.deducted ? t('wrongSetPoint') : t('wrongSetSkip');
+      } else if (msg.result === 'timeout') {
+        message.textContent = msg.deducted ? t('setTimeoutPoint') : t('setTimeoutSkip');
+      } else if (msg.result === 'startTimeout') {
+        message.textContent = msg.deducted ? t('setStartTimeoutPoint') : t('setStartTimeoutSkip');
+      }
+      render();
+    }
   }
 
   function hostPlayerName(peerId) {
@@ -3245,6 +3304,12 @@
     });
 
     diag('SET_CLAIM_FAILED', `${name} reason=${reason}`);
+    hostSendToPeer(peerId, {
+      type:'set_outcome',
+      result:reason,
+      deducted:!!meta?.deducted,
+      skip:!!meta?.skip
+    });
     hostClearSetClaim();
 
     if (hasHoles(roomState.cards)) hostRefillAfterStreak();
@@ -3285,8 +3350,8 @@
       priority_until:now + SET_PRIORITY_MS
     }, true);
 
+    hostSendToPeer(peerId, {type:'set_outcome', result:'correct'});
     diag('SET_CORRECT', `${name} +1`);
-    if (peerId === clientId) message.textContent = t('correctPriority');
   }
 
   function hostSelectCard(peerId, id) {
@@ -4432,7 +4497,8 @@
         }
         diag('SET_CARD_QUEUED', `${id} pending-claim`);
         render();
-        message.textContent = t('chooseMore')(Math.max(0, 3 - pendingSetCardIds.length));
+        const remaining = 3 - pendingSetCardIds.length;
+        message.textContent = remaining <= 0 ? t('setChecking') : t('chooseMore')(remaining);
         return;
       }
 
