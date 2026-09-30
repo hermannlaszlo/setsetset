@@ -573,6 +573,7 @@
       <button id="new-card" class="primary" type="button" data-i18n="newCard">New card</button>
       <button id="has-set" type="button" data-i18n="hasSet">Any SET?</button>
       <button id="chat-btn" class="chat-icon-btn multiplayer-only" type="button" aria-label="Chat" title="Chat">💬<span id="chat-unread" class="chat-unread hidden">0</span></button>
+      <button id="rules-btn" class="chat-icon-btn multiplayer-only" type="button" aria-label="Asztalszabályok" title="Asztalszabályok">⚙️</button>
       <button id="diag-btn" class="chat-icon-btn multiplayer-only" type="button" aria-label="P2P Diagnose" title="P2P Diagnose">⌁</button>
       <button id="help-btn" class="help-icon-btn" type="button" aria-label="Help" title="Help">?</button>
       <button id="copy-invite-btn" type="button" data-i18n="copyInvite">Invite</button>
@@ -808,6 +809,8 @@
   const currentHostEl = document.getElementById('current-host');
   const copyInviteBtn = document.getElementById('copy-invite-btn');
   const chatBtn = document.getElementById('chat-btn');
+  const rulesBtn = document.getElementById('rules-btn');
+  const rulesPanel = document.getElementById('rules-panel');
   const diagBtn = document.getElementById('diag-btn');
   const diagPanel = document.getElementById('diag-panel');
   const diagDragHandle = document.getElementById('diag-drag-handle');
@@ -5566,6 +5569,11 @@
       message.textContent = result ? t('hasSetYes') : t('hasSetNo');
     }
     render();
+  });
+
+  rulesBtn.addEventListener('click', () => {
+    rulesPanel.open = !rulesPanel.open;
+    if (rulesPanel.open) rulesPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
   });
   window.addEventListener('blur', stopHintHold);
 
