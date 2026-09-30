@@ -1,17 +1,11 @@
-SET GitHub Pages – atomic third-card SET resolution
+SET multiplayer
 
-Fixes the state where multiplayer stopped at:
-  "3 cards selected — checking…"
+Helyi indítás: npm ci, majd npm run dev
+Helyi regressziós tesztek: npm test
+Valódi Supabase + két Chrome-kliens teszt: npm run test:live
+GitHub Pages másolat frissítése: npm run sync:pages
 
-Changes:
-- The host no longer broadcasts a transient selecting=3 state before validation.
-- On the third card, the host resolves the SET atomically first.
-- Correct SET immediately becomes priority state and sends SET_OUTCOME.
-- Wrong SET immediately applies the penalty and clears the claim.
-- hostResolveSelectedSet is wrapped with diagnostics and exception handling.
-- A 1.5 second client watchdog asks the host to resolve/re-send state if completion
-  somehow does not arrive.
-- Diagnostic log adds SET_THIRD_CARD, SET_RESOLVE_START,
-  SET_RESOLVE_EXCEPTION, and SET_RESOLUTION_REQUEST.
+A javítások, a tesztkörnyezet és a publikálandó fájlok részletes leírása:
+README.md
 
-No new Supabase SQL required.
+A tesztek eredményei: verification/RESULTS.md
