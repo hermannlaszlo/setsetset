@@ -4471,6 +4471,7 @@
         declaringSet = false;
         setDeadline = 0;
         message.textContent = t('intro');
+        saveSoloGame();
         render();
         return;
       }
@@ -4789,14 +4790,62 @@
   }
 
 
+  const SOLO_SAVE_KEY = 'set-solo-game-v1';
+
+  function saveSoloGame() {
+    if (gameMode !== 'solo' || !roomState) return;
+    try {
+      localStorage.setItem(SOLO_SAVE_KEY, JSON.stringify({
+        version: 1,
+        saved_at: Date.now(),
+        state: {
+          cards: Array.isArray(roomState.cards) ? roomState.cards : [],
+          deck: Array.isArray(roomState.deck) ? roomState.deck : [],
+          players: roomState.players || {},
+          version: Number(roomState.version || 1)
+        }
+      }));
+    } catch (err) {
+      console.warn('solo game save failed', err);
+    }
+  }
+
+  function loadSoloGame() {
+    try {
+      const raw = localStorage.getItem(SOLO_SAVE_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      const state = saved?.state;
+      if (saved?.version !== 1 || !state || !Array.isArray(state.cards) || !Array.isArray(state.deck)) return null;
+      if (!state.cards.length || state.cards.some(id => id != null && !cardObj(id)) || state.deck.some(id => !cardObj(id))) return null;
+      const players = state.players && typeof state.players === 'object' ? state.players : {};
+      return {
+        cards: state.cards.slice(),
+        deck: state.deck.slice(),
+        players: { Solo: normalizePlayerEntry(players.Solo || { score: 0, pending_skip: false, skip_token: null }) },
+        version: Math.max(1, Number(state.version || 1)),
+        next_card_allowed_at: null
+      };
+    } catch (err) {
+      console.warn('solo game restore failed', err);
+      try { localStorage.removeItem(SOLO_SAVE_KEY); } catch (_) {}
+      return null;
+    }
+  }
+
+  function clearSoloGame() {
+    try { localStorage.removeItem(SOLO_SAVE_KEY); } catch (_) {}
+  }
+
   function startSoloGame() {
-    const game = newGameState();
+    const saved = loadSoloGame();
+    const game = saved || newGameState();
     roomState = {
       name: 'solo',
       cards: game.cards,
       deck: game.deck,
-      players: { Solo: { score: 0, pending_skip: false, skip_token: null } },
-      version: 1,
+      players: game.players || { Solo: { score: 0, pending_skip: false, skip_token: null } },
+      version: game.version || 1,
       next_card_allowed_at: null
     };
     roomName = 'solo';
@@ -4815,11 +4864,12 @@
     setConnectionStatus('online');
     myPresence = { client_id: clientId, name: playerName, role: 'player', last_activity: Date.now(), thinking_until: 0, round_token: null };
     presenceMap = new Map([[clientId, myPresence]]);
-    message.textContent = t('intro');
+    message.textContent = saved ? t('intro') : t('intro');
     selected = [];
     declaringSet = false;
     setDeadline = 0;
     render();
+    saveSoloGame();
     startTimerLoop();
   }
 
@@ -5115,6 +5165,7 @@
       else roomState.cards.push(roomState.deck.pop());
       roomState.version++;
       message.textContent = t('cardAdded')(roomState.cards.length);
+      saveSoloGame();
       render();
       return;
     }
@@ -5252,6 +5303,7 @@
           roomState.players[playerName] = entry;
           message.textContent = timeout ? t('setTimeoutSoloZero')() : t('wrongSetSoloZero');
         }
+        saveSoloGame();
         render();
         return;
       }
@@ -5313,6 +5365,7 @@
       selected = [];
       declaringSet = false;
       message.textContent = filled.added > 0 ? t('correctAdded')(filled.added) : t('correctRemoved');
+      saveSoloGame();
       render();
       return;
     }
@@ -5694,6 +5747,7 @@
   });
 
   window.addEventListener('offline', () => setConnectionStatus('error'));
+  window.addEventListener('beforeunload', saveSoloGame);
 
   modeSelect.addEventListener('change', () => {
     if (location.pathname === appRootPath() || location.pathname === githubBasePath()) {
