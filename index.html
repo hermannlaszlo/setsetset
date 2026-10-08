@@ -746,8 +746,8 @@
   const RULE_FIELDS = {
     round_wait_enabled: {default:true, type:'boolean', hu:'Közös várakozás új lap előtt', en:'Shared wait before a new card', de:'Gemeinsame Wartezeit vor neuer Karte'},
     penalize_missed_set: {default:false, type:'boolean', hu:'Új lap kérésénél meglévő SET: 3 lap vissza, mindenkinek −1 pont', en:'Draw with a SET present: return 3 cards, −1 point per player', de:'Karte trotz SET anfordern: 3 Karten zurück, je Spieler −1 Punkt'},
-    allow_set_query: {default:true, type:'boolean', hu:'Lekérdezhető, hogy van-e SET', en:'Allow checking for a SET', de:'SET-Abfrage erlauben'},
-    allow_set_reveal: {default:false, type:'boolean', hu:'SET megmutatása 2 másodperces nyomásra', en:'Reveal a SET after a 2-second hold', de:'SET nach 2 Sekunden Halten zeigen'},
+    allow_set_query: {default:false, type:'boolean', hu:'Lekérdezhető, hogy van-e SET', en:'Allow checking for a SET', de:'SET-Abfrage erlauben'},
+    allow_set_reveal: {default:false, type:'boolean', hu:'SET megmutatása 3 kattintással (1,5 mp-en belül)', en:'Reveal a SET after 3 clicks within 1.5 seconds', de:'SET nach 3 Klicks innerhalb von 1,5 Sekunden zeigen'},
     think_seconds: {default:30, min:1, max:300, hu:'Kért gondolkodási idő (✋)', en:'Requested thinking time (✋)', de:'Angeforderte Denkzeit (✋)'},
     set_seconds: {default:10, min:1, max:120, hu:'SET kijelölési idő', en:'SET selection time', de:'SET-Auswahlzeit'},
     set_start_seconds: {default:3, min:1, max:30, hu:'Első kártya kiválasztása', en:'Time to first card', de:'Zeit bis zur ersten Karte'},
@@ -768,7 +768,10 @@
     if (key === 'round_seconds' && !rules.round_wait_enabled) return 0;
     return rules[key] * 1000;
   }
-  function tableRules() { return normalizeRules(gameMode === 'table' ? roomState?.rules : null); }
+  function tableRules() {
+    if (gameMode === 'solo') return normalizeRules({allow_set_query:true, allow_set_reveal:true});
+    return normalizeRules(roomState?.rules);
+  }
   const AWAY_MS = 60000;
   const HIDE_MS = 180000;
 
@@ -5554,69 +5557,47 @@
     broadcastP2P({type:'table_alarm'});
   }
 
-  let hintHoldTimer = null;
   let hintHideTimer = null;
-  let hintHolding = false;
-  let hintLongPress = false;
+  let hintClickTimes = [];
   let revealedSetIds = [];
   let hintBoardKey = null;
   const hintCopy = {
-    hu:{disabled:'A SET lekérdezése ezen az asztalon ki van kapcsolva.',reveal:'Egy SET kártyáit kiemeltük.',hold:'Tartsd nyomva 2 másodpercig a SET megmutatásához.'},
-    en:{disabled:'Checking for a SET is disabled at this table.',reveal:'The cards of one SET are highlighted.',hold:'Hold for 2 seconds to reveal a SET.'},
-    de:{disabled:'Die SET-Abfrage ist an diesem Tisch deaktiviert.',reveal:'Die Karten eines SETs sind markiert.',hold:'Zum Anzeigen eines SETs 2 Sekunden gedrückt halten.'}
+    hu:{disabled:'A SET lekérdezése ezen az asztalon ki van kapcsolva.',reveal:'Egy SET kártyáit kiemeltük.',triple:'Három kattintással, 1,5 másodpercen belül megmutathatod a SET-et.'},
+    en:{disabled:'Checking for a SET is disabled at this table.',reveal:'The cards of one SET are highlighted.',triple:'Click three times within 1.5 seconds to reveal a SET.'},
+    de:{disabled:'Die SET-Abfrage ist an diesem Tisch deaktiviert.',reveal:'Die Karten eines SETs sind markiert.',triple:'Klicke innerhalb von 1,5 Sekunden dreimal, um ein SET anzuzeigen.'}
   };
   function clearSetHint(redraw = true) {
     clearTimeout(hintHideTimer); hintHideTimer = null;
     revealedSetIds = []; hintBoardKey = null;
     if (redraw) render();
   }
-  function stopHintHold() {
-    clearTimeout(hintHoldTimer); hintHoldTimer = null; hintHolding = false;
-  }
-  function startHintHold() {
-    if (hintHolding || hasSetBtn.disabled) return;
-    hintHolding = true; hintLongPress = false;
+  function revealSetHint() {
+    if (!tableRules().allow_set_reveal) return false;
     const boardKey = JSON.stringify(roomState?.cards);
-    hintHoldTimer = setTimeout(() => {
-      if (!hintHolding || hasSetBtn.disabled || !tableRules().allow_set_reveal ||
-          boardKey !== JSON.stringify(roomState?.cards)) return;
-      hintLongPress = true;
-      const result = findAnySet(roomState?.cards || []);
-      clearSetHint(false);
-      if (result) {
-        revealedSetIds = result.map(card => card.id);
-        hintBoardKey = boardKey;
-        hintHideTimer = setTimeout(() => clearSetHint(), 5000);
-      }
-      message.textContent = result ? hintCopy[currentLang].reveal : t('hasSetNo');
-      render();
-    }, 2000);
+    const result = findAnySet(roomState?.cards || []);
+    clearSetHint(false);
+    if (result) {
+      revealedSetIds = result.map(card => card.id);
+      hintBoardKey = boardKey;
+      hintHideTimer = setTimeout(() => clearSetHint(), 5000);
+    }
+    message.textContent = result ? hintCopy[currentLang].reveal : t('hasSetNo');
+    render();
+    return true;
   }
-  hasSetBtn.addEventListener('pointerdown', event => {
-    if (event.button !== 0) return;
-    noteActivity(); startHintHold();
-  });
-  ['pointerup','pointercancel','pointerleave','blur'].forEach(type => hasSetBtn.addEventListener(type, stopHintHold));
-  hasSetBtn.addEventListener('contextmenu', event => event.preventDefault());
-  hasSetBtn.addEventListener('keydown', event => {
-    if (![' ','Enter'].includes(event.key)) return;
-    event.preventDefault();
-    if (!event.repeat) startHintHold();
-  });
-  hasSetBtn.addEventListener('keyup', event => {
-    if (![' ','Enter'].includes(event.key)) return;
-    event.preventDefault();
-    const wasHolding = hintHolding;
-    stopHintHold();
-    if (wasHolding) hasSetBtn.click();
-  });
   hasSetBtn.addEventListener('click', () => {
-    noteActivity(); stopHintHold();
-    if (hintLongPress) { hintLongPress = false; return; }
+    noteActivity();
     if (isGameOver() || hasSetBtn.disabled) return;
+    const now = performance.now();
+    hintClickTimes = hintClickTimes.filter(time => now - time <= 1500);
+    hintClickTimes.push(now);
+    if (hintClickTimes.length >= 3) {
+      hintClickTimes = [];
+      if (revealSetHint()) return;
+    }
     clearSetHint(false);
     if (!tableRules().allow_set_query) {
-      message.textContent = tableRules().allow_set_reveal ? hintCopy[currentLang].hold : hintCopy[currentLang].disabled;
+      message.textContent = tableRules().allow_set_reveal ? hintCopy[currentLang].triple : hintCopy[currentLang].disabled;
     } else {
       const result = findAnySet(roomState?.cards || []);
       message.textContent = result ? t('hasSetYes') : t('hasSetNo');
@@ -5628,7 +5609,6 @@
     rulesPanel.open = !rulesPanel.open;
     if (rulesPanel.open) rulesPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
   });
-  window.addEventListener('blur', stopHintHold);
 
   newBtn.addEventListener('click', () => {
     noteActivity();
@@ -5636,7 +5616,7 @@
   });
 
   async function leaveTable() {
-    stopHintHold(); clearSetHint(false); clearTableAlarm();
+    hintClickTimes = []; clearSetHint(false); clearTableAlarm();
     await closeP2P();
     isHostClient = false;
     hostClientId = null;
