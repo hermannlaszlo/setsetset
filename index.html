@@ -5558,6 +5558,7 @@
   }
 
   let hintHideTimer = null;
+  let hintSequenceTimer = null;
   let hintClickTimes = [];
   let revealedSetIds = [];
   let hintBoardKey = null;
@@ -5568,21 +5569,41 @@
   };
   function clearSetHint(redraw = true) {
     clearTimeout(hintHideTimer); hintHideTimer = null;
+    clearTimeout(hintSequenceTimer); hintSequenceTimer = null;
     revealedSetIds = []; hintBoardKey = null;
     if (redraw) render();
+  }
+  function findAllSets(cardIds) {
+    const objects = (cardIds || []).filter(Boolean).map(cardObj);
+    const sets = [];
+    for (let i = 0; i < objects.length - 2; i++)
+      for (let j = i + 1; j < objects.length - 1; j++)
+        for (let k = j + 1; k < objects.length; k++)
+          if (isSet(objects[i], objects[j], objects[k])) sets.push([objects[i], objects[j], objects[k]]);
+    return sets;
   }
   function revealSetHint() {
     if (!tableRules().allow_set_reveal) return false;
     const boardKey = JSON.stringify(roomState?.cards);
-    const result = findAnySet(roomState?.cards || []);
+    const sets = findAllSets(roomState?.cards || []);
     clearSetHint(false);
-    if (result) {
-      revealedSetIds = result.map(card => card.id);
-      hintBoardKey = boardKey;
-      hintHideTimer = setTimeout(() => clearSetHint(), 5000);
+    if (!sets.length) {
+      message.textContent = t('hasSetNo');
+      render();
+      return true;
     }
-    message.textContent = result ? hintCopy[currentLang].reveal : t('hasSetNo');
-    render();
+    let index = 0;
+    const showNext = () => {
+      if (boardKey !== JSON.stringify(roomState?.cards)) { clearSetHint(); return; }
+      revealedSetIds = sets[index].map(card => card.id);
+      hintBoardKey = boardKey;
+      message.textContent = `${hintCopy[currentLang].reveal} (${index + 1}/${sets.length})`;
+      render();
+      index += 1;
+      if (index < sets.length) hintSequenceTimer = setTimeout(showNext, 3000);
+      else hintHideTimer = setTimeout(() => clearSetHint(), 3000);
+    };
+    showNext();
     return true;
   }
   hasSetBtn.addEventListener('click', () => {
