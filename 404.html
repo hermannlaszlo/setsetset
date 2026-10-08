@@ -747,7 +747,7 @@
     round_wait_enabled: {default:true, type:'boolean', hu:'Közös várakozás új lap előtt', en:'Shared wait before a new card', de:'Gemeinsame Wartezeit vor neuer Karte'},
     penalize_missed_set: {default:false, type:'boolean', hu:'Új lap kérésénél meglévő SET: 3 lap vissza, mindenkinek −1 pont', en:'Draw with a SET present: return 3 cards, −1 point per player', de:'Karte trotz SET anfordern: 3 Karten zurück, je Spieler −1 Punkt'},
     allow_set_query: {default:false, type:'boolean', hu:'Lekérdezhető, hogy van-e SET', en:'Allow checking for a SET', de:'SET-Abfrage erlauben'},
-    allow_set_reveal: {default:false, type:'boolean', hu:'SET megmutatása 3 kattintással (1,5 mp-en belül)', en:'Reveal a SET after 3 clicks within 1.5 seconds', de:'SET nach 3 Klicks innerhalb von 1,5 Sekunden zeigen'},
+    allow_set_reveal: {default:false, type:'boolean', hu:'SET-hint: 2 vagy 3 kattintás (1,5 mp-en belül)', en:'SET hint: 2 or 3 clicks within 1.5 seconds', de:'SET-Hinweis: 2 oder 3 Klicks innerhalb von 1,5 Sekunden'},
     think_seconds: {default:30, min:1, max:300, hu:'Kért gondolkodási idő (✋)', en:'Requested thinking time (✋)', de:'Angeforderte Denkzeit (✋)'},
     set_seconds: {default:10, min:1, max:120, hu:'SET kijelölési idő', en:'SET selection time', de:'SET-Auswahlzeit'},
     set_start_seconds: {default:3, min:1, max:30, hu:'Első kártya kiválasztása', en:'Time to first card', de:'Zeit bis zur ersten Karte'},
@@ -5563,9 +5563,9 @@
   let revealedSetIds = [];
   let hintBoardKey = null;
   const hintCopy = {
-    hu:{disabled:'A SET lekérdezése ezen az asztalon ki van kapcsolva.',reveal:'Egy SET kártyáit kiemeltük.',triple:'Három kattintással, 1,5 másodpercen belül megmutathatod a SET-et.'},
-    en:{disabled:'Checking for a SET is disabled at this table.',reveal:'The cards of one SET are highlighted.',triple:'Click three times within 1.5 seconds to reveal a SET.'},
-    de:{disabled:'Die SET-Abfrage ist an diesem Tisch deaktiviert.',reveal:'Die Karten eines SETs sind markiert.',triple:'Klicke innerhalb von 1,5 Sekunden dreimal, um ein SET anzuzeigen.'}
+    hu:{disabled:'A SET lekérdezése ezen az asztalon ki van kapcsolva.',reveal:'Egy SET kártyáit kiemeltük.',single:'Egy SET egyik lapját kiemeltük.',double:'Két kattintással, 1,5 másodpercen belül megmutathatunk egy lapot.',triple:'Három kattintással, 1,5 másodpercen belül megmutathatjuk az összes SET-et.'},
+    en:{disabled:'Checking for a SET is disabled at this table.',reveal:'The cards of one SET are highlighted.',single:'One card from a SET is highlighted.',double:'Click twice within 1.5 seconds to reveal one card.',triple:'Click three times within 1.5 seconds to reveal all SETs.'},
+    de:{disabled:'Die SET-Abfrage ist an diesem Tisch deaktiviert.',reveal:'Die Karten eines SETs sind markiert.',single:'Eine Karte aus einem SET ist markiert.',double:'Klicke innerhalb von 1,5 Sekunden zweimal, um eine Karte anzuzeigen.',triple:'Klicke innerhalb von 1,5 Sekunden dreimal, um alle SETs anzuzeigen.'}
   };
   function clearSetHint(redraw = true) {
     clearTimeout(hintHideTimer); hintHideTimer = null;
@@ -5581,6 +5581,22 @@
         for (let k = j + 1; k < objects.length; k++)
           if (isSet(objects[i], objects[j], objects[k])) sets.push([objects[i], objects[j], objects[k]]);
     return sets;
+  }
+  function revealSingleSetCard() {
+    if (!tableRules().allow_set_reveal) return false;
+    const boardKey = JSON.stringify(roomState?.cards);
+    const sets = findAllSets(roomState?.cards || []);
+    clearSetHint(false);
+    if (sets.length) {
+      revealedSetIds = [sets[0][0].id];
+      hintBoardKey = boardKey;
+      hintHideTimer = setTimeout(() => clearSetHint(), 3000);
+      message.textContent = hintCopy[currentLang].single;
+    } else {
+      message.textContent = t('hasSetNo');
+    }
+    render();
+    return true;
   }
   function revealSetHint() {
     if (!tableRules().allow_set_reveal) return false;
@@ -5615,6 +5631,9 @@
     if (hintClickTimes.length >= 3) {
       hintClickTimes = [];
       if (revealSetHint()) return;
+    }
+    if (hintClickTimes.length === 2 && tableRules().allow_set_reveal) {
+      if (revealSingleSetCard()) return;
     }
     clearSetHint(false);
     if (!tableRules().allow_set_query) {
